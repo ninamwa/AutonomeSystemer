@@ -2,15 +2,15 @@
 
 
 
-	import math
+	from math import *
 	from scipy.integrate import quad
 	import rospy
 	from nav_msgs.msg import Odometry
 	from geometry_msgs.msg import Pose
 	from geometry_msgs.msg import poseArray
 	from std_msgs.msg import LaserScan
-
-	import tf #litt usikre på om denne stemmer. må testes
+	import tf # A little unsure about this one
+	import numpy
 
 	alfa1=alfa2=alfa3=alfa4=3.0
 
@@ -113,19 +113,19 @@
 			deltarot1 = math.atan2(self.dy, self.dx) - oldpose[2]
 			deltarot2 = oldpose[2] - theta - deltarot1
 
-			self.u = [deltatrans, deltarot1,deltarot2]
+			self.u = [deltatrans, deltarot1, deltarot2]
 
 
 		# This needs to be called inside sensorupdate with
 		def predictParticlePose(self,particle):
 		# Predict new pose for a particle after action u is performed over a timeinterval dt
 
-			dtbt = self.u[0] - self.sample(alfa3 * self.u[0] + alfa4 * (self.u[1] * self.u[2])
+			dtbt = self.u[0] - self.sample(alfa3 * self.u[0] + alfa4 * (self.u[1] * self.u[2]))
 			dtb1 = self.u[1] - self.sample(alfa1*self.u[1] + alfa2*self.u[0])
 			dtb2 = self.u[2] - self.sample(alfa1*self.u[2] + alfa2*self.u[0])
 
-			particle.x = particle.x + dtbt*math.cos(inparticle.theta+dtb1)
-			particle.y = particle.y + dtbt*math.sin(inparticle.theta+dtb1)
+			particle.x = particle.x + dtbt*math.cos(particle.theta+dtb1)
+			particle.y = particle.y + dtbt*math.sin(particle.theta+dtb1)
 			particle.theta = particle.theta + dtb1 + dtb2
 
 
@@ -140,7 +140,11 @@
 				return msg
 
 
+		#sample from normal distribution
 		def sample(self, num):
+			for i in range(0,12):
+				sum += numpy.random(-num,num)
+			return 0.5*sum
 
 			#measurement model
 		def weightUpdate(self,msg):
@@ -165,6 +169,8 @@
 							q = 1e-20 #If q is zero then reassign q a small probability
 				self.weights.append(q) ##LITT USIKKER PÅ HVORDAN VI SKAL GJØRE DETTE?
 
+		def resample(self, newParticles):
+
 
 
 	class MCL(object):
@@ -172,33 +178,30 @@
 		def __init__(self, xMin, yMin, xMax, yMax, nparticles):
 			rospy.init_node('monteCarlo', anonymous=True)  # Initialize node, set anonymous=true
 
+			# open map goes here
+
 			self.particleFilter = ParticleFilter()
-
-			#Initialize particle set
 			# set number of particles, standard or set
-			#initialize node
-			#subscribe data we need
-			# /scan
-			# odometry pose
+			# shall we have no parameters in?
 
 
-			#publish to topic for rviz
+			#Initialize particle set in particle filter
 
-			#output Xt -> input for next iteration
+			# Do something about the time
 
 			self.posePublisher = rospy.Publisher("Poses", Pose)  # pulisher of position+orioentation to topic poses, type Poses
 			self.particlesPublisher = rospy.Publisher("PoseArrays", poseArray)  # publisher of particles in poseArray
 			rospy.Subscriber("/RosAria/pose", Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
-			rospy.Subscriber("/scan", LaserScan, ParticleFilter.weightUpdate)  # subscribe to kinect scan for the sensorupdate
+			rospy.Subscriber("/scan", LaserScan, self.ParticleFilter.weightUpdate)  # subscribe to kinect scan for the sensorupdate
 			rospy.spin()
 
 
 		def odomCallback(self, msg):
-			self.pf.getOdom(msg)
-			#Here we will need something to adjust the time
+			self.particleFilter.getOdom(msg)
+			#Here we will need something to adjust the time : mutex acquire and release
 
 
-		def runMCL(self)):
+		def runMCL(self):
 			rate = rospy.Rate(20)
 			while not rospy.is_shutdown():
 				# Publish particles to filter in rviz
