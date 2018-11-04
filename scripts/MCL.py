@@ -1,181 +1,223 @@
-#!/usr/bin/env python
-
-from math import sqrt, exp, pi
-from scipy.integrate import quad
-import rospy
-from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Pose
-from geometry_msgs.msg import poseArray
+	#!/usr/bin/env python
 
 
 
-class Particle(object):
-	def __init__(self,x,y,theta):
+	import math
+	from scipy.integrate import quad
+	import rospy
+	from nav_msgs.msg import Odometry
+	from geometry_msgs.msg import Pose
+	from geometry_msgs.msg import poseArray
+	from std_msgs.msg import LaserScan
 
-		#if you want, implement id as input and self.id = id
-		self.x = x
-		self.y = y
-		self.theta = theta
+	import tf #litt usikre på om denne stemmer. må testes
 
-class ParticleFilter(object):
-	def __init__(self):
-		self.particles = []
-		self.weights = []
-		self.laser_min_angle = 0
-		self.laser_max_angle = 0
-		self.laser_min_range = 0
-		self.laser_max_range = 0
+	alfa1=alfa2=alfa3=alfa4=3.0
 
+	class Particle(object):
+		def __init__(self,x,y,theta):
 
-		#Measurement parameters
-		self.lambdaShort = 0
-		self.zHit = 0
-		self.zShort = 0
-		self.zMax = 0
-		self.zRand = 0
-		self.sigmaHit = 0
+			#if you want, implement id as input and self.id = id
+			self.x = x
+			self.y = y
+			self.theta = theta
 
 
-	def get_pMax(self, zt):
-		if zt == self.laser_max_range:
-			return 1
-		else:
-			return 0
+	class ParticleFilter(object):
+		def __init__(self):
+			self.particles = []
+			self.weights = []
+			self.laser_min_angle = 0
+			self.laser_max_angle = 0
+			self.laser_min_range = 0
+			self.laser_max_range = 0
 
-	def get_pRand(self, zt):
-		if zt >=0 and zt < self.laser_max_range:
-			return 1/self.laser_max_range
-		else:
-			return 0
+			# Last odometry measurements
+			self.lastOdom = None
 
-	def get_pHit(self,zt,zt_star):
-		N = (1/sqrt(2*pi*self.sigmaHit**2))*exp(-0.5*((zt-zt_star)**2) / (self.sigmaHit**2))
-		n = (quad(N,0,self.laser_max_range))**-1
-		if zt >= 0 and zt < self.laser_max_range:
-			return n * N
-		else:
-			return 0
+			# Current odometry measurements
+			self.Odom = None
 
 
+			# Relative change in x,y,theta over time dt since the last time particles were updated
+			self.dx = 0
+			self.dy = 0
+			self.dtheta = 0
 
-	def get_pShort(self,zt,zt_star):
-		n = 1/(1- exp(-self.lambdaShort*zt_star))
-		if zt >= 0 and zt < zt_star:
-			return n*self.lamdaShort*exp(-self.lamdaShort*zt)
-		else:
-			return 0
+			# Initialize control signal u from odometry
+			self.u = []
 
-
-    def motionUpdate(self, msg):
-        init = 0
-        alfa1 = alfa2 = alfa3 = alfa4 = 3.0
-
-        """Compute motion of robot from the last odometry message to the new odometry message"""
-        if init == 0:
-            x = msg.pose.pose.position.x
-            y = msg.pose.pose.position.y
-            z = msg.pose.pose.orientation.z
-            w = msg.pose.pose.orientation.w
-            (t1, t2, theta) = tf.transformations.euler_from_quaternion((0, 0, z, w))
-            lastpose = list([x, y, theta])
-            init = 1
-        if init == 1:
-            z = msg.pose.pose.orientation.z
-            w = msg.pose.pose.orientation.w
-            (t1, t2, theta) = tf.transformations.euler_from_quaternion((0, 0, z, w))
-            dx = msg.pose.pose.position.x - lastpose[0]
-            dy = msg.pose.pose.position.y - lastpose[1]
-            deltatrans = math.sqrt(dx ** 2 + dy ** 2)
-            deltarot1 = math.atan2(dy, dx) - lastpose[2]
-            deltarot2 = lastpose[2] - theta - deltarot1
-            deltarot1prime = deltarot1 - self.sample(alfa1 * deltarot1 + alfa2 * deltatrans)
-            deltatransprime = deltatrans - self.sample(alfa3 * deltatrans + alfa4 * (deltarot1 + deltarot2))
-            deltarot2prime = deltarot2 - self.sample(alfa1 * deltarot2 + alfa2 * deltatrans)
-            poses = PoseArray()
-            # particles.header.frame_id = "map"
-
-            # the for loop in the MCL algorithm goes inside the motionupdate method
-            for i in range(0, nParticles):
-                xprime =lastpose[0] + deltatransprime *math.cos(lastpose[2]+deltarot1prime)
-                yprime =lastpose[1] + deltatransprime *math.sin(lastpose[2]+deltarot1prime)
-                thetaprime =lastpose[2] + deltarot1prime + deltarot2prime
-                self.particle = Particle(self, xprime, yprime, thetaprime)
+			#Measurement parameters
+			self.lambdaShort = 0
+			self.zHit = 0
+			self.zShort = 0
+			self.zMax = 0
+			self.zRand = 0
+			self.sigmaHit = 0
 
 
-    def sample(self, num):
+		def get_pMax(self, zt):
+			if zt == self.laser_max_range:
+				return 1
+			else:
+				return 0
 
-        #measurement model
-	def weightUpdate(self,msg):
-		self.laser_min_angle = msg.angle_min
-		self.laser_max_angle = msg.angle_max
-		self.laser_min_range = msg.range_min
-		self.laser_max_range = msg.range_max
-		self.weights= []
+		def get_pRand(self, zt):
+			if zt >=0 and zt < self.laser_max_range:
+				return 1/self.laser_max_range
+			else:
+				return 0
 
-		q = 1
-		for particle in self.particles:
-			for i in range(0,len(msg.ranges)):
-				zt = msg.range[i]	#(Note: values < range_min or > range_max should be discarded)
-				if (zt >= self.laser_min_range or zt <= self.laser_max_range):
-					#Kalkulere z_star???
-
-					zt_star = sqrt((xt[0] + zt_true[k] * math.cos(xt[2]+angs[k]))**2 + (xt[1] + zt_true[k] * math.sin(xt[2]+angs[k]))**2)
-
-					p = self.zHit * self.get_pHit(self,zt, zt_star) +self.zShort*self.get_pShort(zt, zt_star) + self.zMax* self.get_pMax(zt) +self.zRand*self.get_pRand(zt)
-					q = q * p
-					if q == 0:
-						q = 1e-20 #If q is zero then reassign q a small probability
-			self.weights.append(q) ##LITT USIKKER PÅ HVORDAN VI SKAL GJØRE DETTE?
+		def get_pHit(self,zt,zt_star):
+			N = (1/sqrt(2*pi*self.sigmaHit**2))*exp(-0.5*((zt-zt_star)**2) / (self.sigmaHit**2))
+			n = (quad(N,0,self.laser_max_range))**-1
+			if zt >= 0 and zt < self.laser_max_range:
+				return n * N
+			else:
+				return 0
 
 
-class MCL(object):
 
-    def __init__(self, xMin, yMin, xMax, yMax, nparticles):
-        rospy.init_node('monteCarlo', anonymous=True)  # Initialize node, set anonymous=true
-
-        self.particleFilter = ParticleFilter()
-
-    #Initialize particle set
-	# set number of particles, standard or set
-	#initialize node
-	#subscribe data we need
-	# /scan
-	# odometry pose
+		def get_pShort(self,zt,zt_star):
+			n = 1/(1- exp(-self.lambdaShort*zt_star))
+			if zt >= 0 and zt < zt_star:
+				return n*self.lamdaShort*exp(-self.lamdaShort*zt)
+			else:
+				return 0
 
 
-	#publish to topic for rviz
+		def getOdom(self,msg):
+			self.lastOdom = self.Odom
+			self.Odom = msg
 
-	#output Xt -> input for next iteration
+			oldx = self.lastOdom.pose.pose.position.x
+			oldy = self.lastOdom.pose.pose.position.y
+			oldz = self.lastOdom.pose.pose.orientation.z
+			oldw = self.lastOdom.pose.pose.orientation.w
+			(t0,t1,oldtheta) = tf.transformations.euler_from_quaternion(0,0,oldz,oldw)
+			oldpose = list([oldx,oldy,oldtheta])
+
+			x = self.Odom.pose.pose.position.x
+			y = self.Odom.pose.pose.position.y
+			z = self.Odom.pose.pose.orientation.z
+			w = self.Odom.pose.pose.orientation.w
+			(t0, t1, theta) = tf.transformations.euler_from_quaternion(0, 0, z, w)
+			newpose = list([x,y,theta])
+
+			#these need to be initialized to zero right after calling predict pose
+			self.dx = newpose[0]-oldpose[0]
+			self.dy = newpose[1]-oldpose[1]
+			self.dtheta = newpose[2]-oldpose[2]
+
+			deltatrans = math.sqrt(self.dx ** 2 + self.dy ** 2)
+			deltarot1 = math.atan2(self.dy, self.dx) - oldpose[2]
+			deltarot2 = oldpose[2] - theta - deltarot1
+
+			self.u = [deltatrans, deltarot1,deltarot2]
 
 
-    self.posePublisher = rospy.Publisher("Poses", Pose)  # pulisher of position+orioentation to topic poses, type Poses
-    self.particlesPublisher = rospy.Publisher("PoseArrays", poseArray)  # publisher of particles in poseArray
-    rospy.Subscriber("/RosAria/pose", Odometry, particleFilter.motionUpdate)  # subscriber for odometry to be used for motionupdate
-    rospy.Subscriber("/scan", LaserScan, particleFilter.weightUpdate)  # subscribe to kinect scan for the sensorupdate
-    rospy.spin()
+		# This needs to be called inside sensorupdate with
+		def predictParticlePose(self,particle):
+		# Predict new pose for a particle after action u is performed over a timeinterval dt
 
-    def sample(self,num):
+			dtbt = self.u[0] - self.sample(alfa3 * self.u[0] + alfa4 * (self.u[1] * self.u[2])
+			dtb1 = self.u[1] - self.sample(alfa1*self.u[1] + alfa2*self.u[0])
+			dtb2 = self.u[2] - self.sample(alfa1*self.u[2] + alfa2*self.u[0])
 
-
-    def runMCL(self)):
-        rate = rospy.Rate(20)
-        while not rospy.is_shutdown():
-            # Publish particles to filter in rviz
-            rate.sleep()
+			particle.x = particle.x + dtbt*math.cos(inparticle.theta+dtb1)
+			particle.y = particle.y + dtbt*math.sin(inparticle.theta+dtb1)
+			particle.theta = particle.theta + dtb1 + dtb2
 
 
-if __name__ =="__main__":
 
-    # Map boundaries
-    xMin = -30
-    xMax = 30
-    yMin = -30
-    yMax = 30
+		def createPose(particle):
+				msg = Pose()
+				msg.position.x = particle.x
+				msg.position.y = particle.y
+				quaternion = tf.transformations.quaternion_from_euler(0, 0, particle.theta)
+				msg.orientation.z = quaternion[2]
+				msg.orientation.w = quaternion[3]
+				return msg
 
 
-    # Set number of particles
-    nParticles = 100
+		def sample(self, num):
 
-    # Initialize MCL
-    monteCarlo = MCL(xMin, yMin, xMax, yMax, nParticles)
-    monteCarlo.runMCL()
+			#measurement model
+		def weightUpdate(self,msg):
+			self.laser_min_angle = msg.angle_min
+			self.laser_max_angle = msg.angle_max
+			self.laser_min_range = msg.range_min
+			self.laser_max_range = msg.range_max
+			self.weights= []
+
+			q = 1
+			for particle in self.particles:
+				for i in range(0,len(msg.ranges)):
+					zt = msg.range[i]	#(Note: values < range_min or > range_max should be discarded)
+					if (zt >= self.laser_min_range or zt <= self.laser_max_range):
+						#Kalkulere z_star???
+
+						zt_star = sqrt((xt[0] + zt_true[k] * math.cos(xt[2]+angs[k]))**2 + (xt[1] + zt_true[k] * math.sin(xt[2]+angs[k]))**2)
+
+						p = self.zHit * self.get_pHit(self,zt, zt_star) +self.zShort*self.get_pShort(zt, zt_star) + self.zMax* self.get_pMax(zt) +self.zRand*self.get_pRand(zt)
+						q = q * p
+						if q == 0:
+							q = 1e-20 #If q is zero then reassign q a small probability
+				self.weights.append(q) ##LITT USIKKER PÅ HVORDAN VI SKAL GJØRE DETTE?
+
+
+
+	class MCL(object):
+
+		def __init__(self, xMin, yMin, xMax, yMax, nparticles):
+			rospy.init_node('monteCarlo', anonymous=True)  # Initialize node, set anonymous=true
+
+			self.particleFilter = ParticleFilter()
+
+			#Initialize particle set
+			# set number of particles, standard or set
+			#initialize node
+			#subscribe data we need
+			# /scan
+			# odometry pose
+
+
+			#publish to topic for rviz
+
+			#output Xt -> input for next iteration
+
+			self.posePublisher = rospy.Publisher("Poses", Pose)  # pulisher of position+orioentation to topic poses, type Poses
+			self.particlesPublisher = rospy.Publisher("PoseArrays", poseArray)  # publisher of particles in poseArray
+			rospy.Subscriber("/RosAria/pose", Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
+			rospy.Subscriber("/scan", LaserScan, ParticleFilter.weightUpdate)  # subscribe to kinect scan for the sensorupdate
+			rospy.spin()
+
+
+		def odomCallback(self, msg):
+			self.pf.getOdom(msg)
+			#Here we will need something to adjust the time
+
+
+		def runMCL(self)):
+			rate = rospy.Rate(20)
+			while not rospy.is_shutdown():
+				# Publish particles to filter in rviz
+				rate.sleep()
+
+
+	if __name__ =="__main__":
+
+		# Map boundaries
+		xMin = -30
+		xMax = 30
+		yMin = -30
+		yMax = 30
+
+
+		# Set number of particles
+		nParticles = 100
+
+		# Initialize MCL
+		# Inputs are needed for Particle Filter, or should we just set them there? NINA
+		monteCarlo = MCL(xMin, yMin, xMax, yMax, nParticles)
+		monteCarlo.runMCL()
