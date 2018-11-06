@@ -156,17 +156,74 @@
 				for i in range(0,len(msg.ranges)):
 					zt = msg.range[i]	#(Note: values < range_min or > range_max should be discarded)
 					if (zt >= self.laser_min_range or zt <= self.laser_max_range):
-						#Kalkulere z_star???
 
-						zt_star = sqrt((xt[0] + zt_true[k] * math.cos(xt[2]+angs[k]))**2 + (xt[1] + zt_true[k] * math.sin(xt[2]+angs[k]))**2)
+						zt_star = self.raycasting(particle,zt)
 
 						p = self.zHit * self.get_pHit(self,zt, zt_star) +self.zShort*self.get_pShort(zt, zt_star) + self.zMax* self.get_pMax(zt) +self.zRand*self.get_pRand(zt)
 						q = q * p
 						if q == 0:
 							q = 1e-20 #If q is zero then reassign q a small probability
-				self.weights.append(q) ##LITT USIKKER PÅ HVORDAN VI SKAL GJØRE DETTE?
+				self.weights.append(q)
 
 		def resample(self, newParticles):
+			return 0
+
+		def raycasting(self, particle,zt):
+			##Finn start og slutt
+			x0,y0 = particle.x,particle.y
+			x1,y1=
+			points=self.bresenhamLineAlg(x0,x1,y0,y1)
+			for p in len(points):
+				occupied = #check if grid is occupied
+				if occupied:
+					return sqrt((p.x-x0)**2 + (p.y-y0)**2) # * resolution??
+			return self.laser_max_range
+
+
+		def bresenhamLineAlg(self, x0, y0, x1, y1):
+			is_steep = abs(y1 - y0) > abs(x1 - x0)
+
+			# Rotating
+			if is_steep:
+				x0, y0 = y0, x0
+				x1, y1 = y1, x1
+
+			# Swapping start and end
+			swapped = False
+			if x0 > x1:
+				x0, x1 = x1, x0
+				y0, y1 = y1, y0
+				swapped = True
+
+			dx = x1 - x0
+			dy = y1 - y0
+
+			if (dy == 0):
+				ystep = 0
+			elif (dy < 0):
+				ystep = -1
+			else:
+				ystep = 1
+
+			error = int(dx / 2)
+			y = y0
+			points = []
+
+			for x in range(x0, x1 + 1):
+				if is_steep:
+					points.append((y, x))
+				else:
+					points.append((x, y))
+
+				error -= abs(dy)
+				if error < 0:
+					y += ystep
+					error += dx
+
+			# Reverse the list if swapped
+			if swapped:
+				points.reverse()
+			return(points)
 
 
 
