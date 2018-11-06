@@ -182,13 +182,15 @@
 			self.laser_max_range = msg.range_max
 			self.weights= []
 
+			zt=0
 			q = 1
 			for particle in self.particles:
 				for i in range(0,len(msg.ranges)):
 					zt = msg.range[i]	#(Note: values < range_min or > range_max should be discarded)
+					#Sende inn vinkelen til zt på en måte? angle = math.radians(i) - min_angle
 					if (zt >= self.laser_min_range or zt <= self.laser_max_range):
 
-						zt_star = self.raycasting(particle,zt)
+						zt_star = self.raycasting(particle)
 
 						p = self.zHit * self.get_pHit(self,zt, zt_star) +self.zShort*self.get_pShort(zt, zt_star) + self.zMax* self.get_pMax(zt) +self.zRand*self.get_pRand(zt)
 						q = q * p
@@ -201,8 +203,8 @@
 
 		def raycasting(self, particle,zt):
 			##Finn start og slutt
-			x0,y0 = particle.x,particle.y
-			x1,y1=
+			x0,y0 = particle.x,particle.y ###TO GRID CORD
+			x1,y1= particle.x+self.laser_max_range*cos(particle.theta),particle.y+self.laser_max_range*sin(particle.theta) ##TO GRID CORD
 			points=self.bresenhamLineAlg(x0,x1,y0,y1)
 			for p in len(points):
 				occupied = #check if grid is occupied
