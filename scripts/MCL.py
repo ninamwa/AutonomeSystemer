@@ -9,15 +9,15 @@
 	import tf # A little unsure about this one
 	import numpy
 
-	alfa1=alfa2=alfa3=alfa4=3.0
 
 	class Particle(object):
-		def __init__(self,x,y,theta):
+		def __init__(self,x,y,theta, id):
 
-			#if you want, implement id as input and self.id = id
+			#Need id to identify particles for assigning weight
 			self.x = x
 			self.y = y
 			self.theta = theta
+			self.id = id
 
 
 	class ParticleFilter(object):
@@ -29,11 +29,23 @@
 			self.laser_min_range = 0
 			self.laser_max_range = 0
 
+			# Map boundaries
+			self.xMin = -30
+			self.xMax = 30
+			self.yMin = -30
+			self.yMax = 30
+
+			# Set number of particles
+			self.nParticles = 100
+
 			# Last odometry measurements
 			self.lastOdom = None
 
 			# Current odometry measurements
 			self.Odom = None
+
+			#Initialize alpha
+			self.alfa1 = self.alfa2 = self.alfa3 = self.alfa4 = 1
 
 
 			# Relative change in x,y,theta over time dt since the last time particles were updated
@@ -51,6 +63,24 @@
 			self.zMax = 0
 			self.zRand = 0
 			self.sigmaHit = 0
+
+		def initializeParticles(self):
+			#Initialize particles and distributes uniformly randomly within the workspace.
+			for i in range(1,self.nParticles):
+				free = True
+				while free:
+					xi = numpy.random.uniform(self.xMin, self.xMax)
+					yi = numpy.random.uniform(self.yMin, self.yMax)
+					#må lage denne metoden: metricToGrid
+					row, col = self.metricToGrid(xi, yi)
+
+					#If the cell is free, there is a probability that the robot is located here
+					if self.gridBinder[row, col]:
+						thetai = numpy.random.uniform(0, 2*pi)
+
+						particlei = Particle(xi, yi, thetai, i)
+						self.particles.append(particlei)
+						free = False
 
 
 		def get_pMax(self, zt):
@@ -113,7 +143,7 @@
 			self.u = [deltatrans, deltarot1, deltarot2]
 
 
-		# This needs to be called inside sensorupdate with
+		# This needs to be called inside sensorupdate with a for loop
 		def predictParticlePose(self,particle):
 		# Predict new pose for a particle after action u is performed over a timeinterval dt
 
@@ -126,7 +156,8 @@
 			particle.theta = particle.theta + dtb1 + dtb2
 
 
-
+		#Creates message of type Pose from Particle()
+		# Use when we publish Particles to ROS topic Poses
 		def createPose(particle):
 				msg = Pose()
 				msg.position.x = particle.x
@@ -229,7 +260,7 @@
 
 	class MCL(object):
 
-		def __init__(self, xMin, yMin, xMax, yMax, nparticles):
+		def __init__(self):
 			rospy.init_node('monteCarlo', anonymous=True)  # Initialize node, set anonymous=true
 
 			# open map goes here
@@ -238,21 +269,35 @@
 			# set number of particles, standard or set
 			# shall we have no parameters in?
 
+			# Initialize particle set in particle filter
+			self.particleFilter.initializeParticles()
 
-			#Initialize particle set in particle filter
 
 			# Do something about the time
 
 			self.posePublisher = rospy.Publisher("Poses", Pose)  # pulisher of position+orioentation to topic poses, type Poses
 			self.particlesPublisher = rospy.Publisher("PoseArrays", poseArray)  # publisher of particles in poseArray
 			rospy.Subscriber("/RosAria/pose", Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
-			rospy.Subscriber("/scan", LaserScan, self.ParticleFilter.weightUpdate)  # subscribe to kinect scan for the sensorupdate
+			rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
 			rospy.spin()
 
+		# for at vi skal kunne "lagre" og ha tilgjengelig tidligere meldinger, MÅ dette håndteres i Particle filter der
+		# ting foregår.
+		# callback trengs for å kunne løse tids-problemet (mutex) dette har vi ikke sett på nå, men
+		# implementerer korrekt nå, for å slippe arbeid senere
 
 		def odomCallback(self, msg):
 			self.particleFilter.getOdom(msg)
 			#Here we will need something to adjust the time : mutex acquire and release
+
+		def sensorCallback(self, msg):
+
+			#Do something about the obervation before initializing
+
+			self.particleFilter.dx = 0
+			self.particleFilter.dy = 0
+			self.particleFilter.dtheta = 0
+
 
 
 		def runMCL(self):
@@ -264,17 +309,7 @@
 
 	if __name__ =="__main__":
 
-		# Map boundaries
-		xMin = -30
-		xMax = 30
-		yMin = -30
-		yMax = 30
-
-
-		# Set number of particles
-		nParticles = 100
-
 		# Initialize MCL
 		# Inputs are needed for Particle Filter, or should we just set them there? NINA
-		monteCarlo = MCL(xMin, yMin, xMax, yMax, nParticles)
+		monteCarlo = MCL()
 		monteCarlo.runMCL()
