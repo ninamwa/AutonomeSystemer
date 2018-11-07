@@ -158,7 +158,7 @@
 
 		#Creates message of type Pose from Particle()
 		# Use when we publish Particles to ROS topic Poses
-		def createPose(particle):
+		def createPose(self, particle):
 				msg = Pose()
 				msg.position.x = particle.x
 				msg.position.y = particle.y
@@ -277,8 +277,8 @@
 
 			# Do something about the time
 
-			self.posePublisher = rospy.Publisher("Poses", Pose)  # pulish of position+orioentation to topic poses, type Poses
-			self.particlesPublisher = rospy.Publisher("PoseArrays", PoseArray)  # publisher of particles in poseArray
+			self.posePublisher = rospy.Publisher("Poses", Pose, queue_size=10)  # pulish of position+orioentation to topic poses, type Poses
+			self.particlesPublisher = rospy.Publisher("PoseArrays", PoseArray, queue_size=10)  # publisher of particles in poseArray
 			rospy.Subscriber("/RosAria/pose", Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
 			rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
 			rospy.spin()
