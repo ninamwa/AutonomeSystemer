@@ -4,7 +4,7 @@
 	import rospy
 	from nav_msgs.msg import Odometry
 	from geometry_msgs.msg import Pose
-	from geometry_msgs.msg import poseArray
+	from geometry_msgs.msg import PoseArray
 	from std_msgs.msg import LaserScan
 	import tf # A little unsure about this one
 	import numpy
@@ -277,8 +277,8 @@
 
 			# Do something about the time
 
-			self.posePublisher = rospy.Publisher("Poses", Pose)  # pulisher of position+orioentation to topic poses, type Poses
-			self.particlesPublisher = rospy.Publisher("PoseArrays", poseArray)  # publisher of particles in poseArray
+			self.posePublisher = rospy.Publisher("Poses", Pose)  # pulish of position+orioentation to topic poses, type Poses
+			self.particlesPublisher = rospy.Publisher("PoseArrays", PoseArray)  # publisher of particles in poseArray
 			rospy.Subscriber("/RosAria/pose", Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
 			rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
 			rospy.spin()
