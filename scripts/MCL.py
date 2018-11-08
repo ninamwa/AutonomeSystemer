@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from math import *
-from scipy.integrate import quad
+import scipy.integrate as integrate
 import rospy
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Pose
@@ -111,14 +111,14 @@ class ParticleFilter(object):
 		oldy = self.lastOdom.pose.pose.position.y
 		oldz = self.lastOdom.pose.pose.orientation.z
 		oldw = self.lastOdom.pose.pose.orientation.w
-		(t0,t1,oldtheta) = tf.transformations.euler_from_quaternion(0,0,oldz,oldw)
+		(t0,t1,oldtheta) = tf.transformations.euler_from_quaternion((0,0,oldz,oldw))
 		oldpose = list([oldx,oldy,oldtheta])
 
 		x = self.Odom.pose.pose.position.x
 		y = self.Odom.pose.pose.position.y
 		z = self.Odom.pose.pose.orientation.z
 		w = self.Odom.pose.pose.orientation.w
-		(t0, t1, theta) = tf.transformations.euler_from_quaternion(0, 0, z, w)
+		(t0, t1, theta) = tf.transformations.euler_from_quaternion((0, 0, z, w))
 		newpose = list([x,y,theta])
 
 		#these need to be initialized to zero right after calling predict pose
@@ -177,9 +177,15 @@ class ParticleFilter(object):
 		else:
 			return 0
 
+
 	def get_pHit(self,zt,zt_star):
 		N = (1/sqrt(2*pi*self.sigmaHit**2))*exp(-0.5*((zt-zt_star)**2) / (self.sigmaHit**2))
-		n = (quad(N,0,self.laser_max_range))**-1
+
+		def integrand(x):
+			return (1 / sqrt(2 * pi * self.sigmaHit ** 2)) * exp(-0.5 * ((x - zt_star) ** 2) / (self.sigmaHit ** 2))
+
+		n_temp = integrate.quad(integrand,0,self.laser_max_range)
+		n = 1/n_temp[0]
 		if zt >= 0 and zt < self.laser_max_range:
 			return n * N
 		else:
@@ -188,9 +194,9 @@ class ParticleFilter(object):
 
 
 	def get_pShort(self,zt,zt_star):
-		n = 1/(1- exp(-self.lambdaShort*zt_star))
+		n = 1/(1-exp(-self.lambdaShort*zt_star))
 		if zt >= 0 and zt < zt_star:
-			return n*self.lamdaShort*exp(-self.lamdaShort*zt)
+			return n*self.lambdaShort*exp(-self.lambdaShort*zt)
 		else:
 			return 0
 
@@ -220,7 +226,8 @@ class ParticleFilter(object):
 				angle = radians(i) - self.laser_min_angle
 				if (zt >= self.laser_min_range or zt <= self.laser_max_range):
 					zt_star = self.raycasting(particle,angle)
-					p = self.zHit * self.get_pHit(zt,zt_star) +self.zShort*self.get_pShort(zt, zt_star) + self.zMax* self.get_pMax(zt) +self.zRand*self.get_pRand(zt)
+					#p = self.zHit * self.get_pHit(zt,zt_star) +self.zShort*self.get_pShort(zt, zt_star) + self.zMax* self.get_pMax(zt) +self.zRand*self.get_pRand(zt)
+					p = self.zMax * self.get_pMax(zt) + self.zRand * self.get_pRand(zt)
 					q = q * p
 					if q == 0:
 						q = 1e-20 #If q is zero then reassign q a small probability
@@ -347,7 +354,7 @@ class MCL(object):
 
 		self.posePublisher = rospy.Publisher("Poses", Pose, queue_size=10)  # pulish of position+orioentation to topic poses, type Poses
 		self.particlesPublisher = rospy.Publisher("PoseArrays", PoseArray, queue_size=10)  # publisher of particles in poseArray
-		#rospy.Subscriber("/RosAria/pose", Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
+		rospy.Subscriber("/RosAria/pose", Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
 		#rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
 		rospy.spin()
 
