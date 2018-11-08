@@ -72,10 +72,10 @@
 
 			#Measurement parameters
 			self.lambdaShort = 0
-			self.zHit = 0
-			self.zShort = 0
-			self.zMax = 0
-			self.zRand = 0
+			self.zHit = 0.25
+			self.zShort = 0.25
+			self.zMax = 0.25
+			self.zRand = 0.25
 			self.sigmaHit = 0
 
 		def initializeParticles(self):
@@ -95,36 +95,6 @@
 						particlei = Particle(xi, yi, thetai, i)
 						self.particles.append(particlei)
 						free = False
-
-
-		def get_pMax(self, zt):
-			if zt == self.laser_max_range:
-				return 1
-			else:
-				return 0
-
-		def get_pRand(self, zt):
-			if zt >=0 and zt < self.laser_max_range:
-				return 1/self.laser_max_range
-			else:
-				return 0
-
-		def get_pHit(self,zt,zt_star):
-			N = (1/sqrt(2*pi*self.sigmaHit**2))*exp(-0.5*((zt-zt_star)**2) / (self.sigmaHit**2))
-			n = (quad(N,0,self.laser_max_range))**-1
-			if zt >= 0 and zt < self.laser_max_range:
-				return n * N
-			else:
-				return 0
-
-
-
-		def get_pShort(self,zt,zt_star):
-			n = 1/(1- exp(-self.lambdaShort*zt_star))
-			if zt >= 0 and zt < zt_star:
-				return n*self.lamdaShort*exp(-self.lamdaShort*zt)
-			else:
-				return 0
 
 
 		def getOdom(self,msg):
@@ -165,8 +135,8 @@
 			dtb1 = self.u[1] - self.sample(alfa1*self.u[1] + alfa2*self.u[0])
 			dtb2 = self.u[2] - self.sample(alfa1*self.u[2] + alfa2*self.u[0])
 
-			particle.x = particle.x + dtbt*math.cos(particle.theta+dtb1)
-			particle.y = particle.y + dtbt*math.sin(particle.theta+dtb1)
+			particle.x = particle.x + dtbt*cos(particle.theta+dtb1)
+			particle.y = particle.y + dtbt*sin(particle.theta+dtb1)
 			particle.theta = particle.theta + dtb1 + dtb2
 
 
@@ -188,24 +158,50 @@
 				sum += numpy.random(-num,num)
 			return 0.5*sum
 
-			#measurement model
+
+		def get_pMax(self, zt):
+			if zt == self.laser_max_range:
+				return 1
+			else:
+				return 0
+
+		def get_pRand(self, zt):
+			if zt >=0 and zt < self.laser_max_range:
+				return 1/self.laser_max_range
+			else:
+				return 0
+
+		def get_pHit(self,zt,zt_star):
+			N = (1/sqrt(2*pi*self.sigmaHit**2))*exp(-0.5*((zt-zt_star)**2) / (self.sigmaHit**2))
+			n = (quad(N,0,self.laser_max_range))**-1
+			if zt >= 0 and zt < self.laser_max_range:
+				return n * N
+			else:
+				return 0
+
+
+
+		def get_pShort(self,zt,zt_star):
+			n = 1/(1- exp(-self.lambdaShort*zt_star))
+			if zt >= 0 and zt < zt_star:
+				return n*self.lamdaShort*exp(-self.lamdaShort*zt)
+			else:
+				return 0
+
+		#Measurement model
 		def weightUpdate(self,msg):
-			self.laser_min_angle = msg.angle_min
-			self.laser_max_angle = msg.angle_max
-			self.laser_min_range = msg.range_min
-			self.laser_max_range = msg.range_max
 			self.weights= []
 
-			zt=0
+			for particle in self.particles:
+				self.predictParticlePose(particle)
+
 			q = 1
 			for particle in self.particles:
 				for i in range(0,len(msg.ranges)):
 					zt = msg.range[i]	#(Note: values < range_min or > range_max should be discarded)
-					#Sende inn vinkelen til zt på en måte? angle = math.radians(i) - min_angle
+					angle = radians(i) - self.laser_min_angle
 					if (zt >= self.laser_min_range or zt <= self.laser_max_range):
-
-						zt_star = self.raycasting(particle)
-
+						zt_star = self.raycasting(particle,angle)
 						p = self.zHit * self.get_pHit(self,zt, zt_star) +self.zShort*self.get_pShort(zt, zt_star) + self.zMax* self.get_pMax(zt) +self.zRand*self.get_pRand(zt)
 						q = q * p
 						if q == 0:
@@ -213,16 +209,16 @@
 				self.weights.append(q)
 
 
-		def raycasting(self, particle,zt):
+		def raycasting(self, particle,angle):
+			theta= particle.theta+angle-(pi/2) ##?????????????
 			#Find start and end point of beam
 			x0,y0 = self.metricToGrid(particle.x,particle.y) #Converting into grid
-			x1,y1= self.metricToGrid(particle.x+self.laser_max_range*cos(particle.theta),particle.y+self.laser_max_range*sin(particle.theta)) #Converting into grid
+			x1,y1= self.metricToGrid(particle.x+self.laser_max_range*cos(theta),particle.y+self.laser_max_range*sin(theta)) #Converting into grid
 			grids=self.bresenhamLineAlg(x0,x1,y0,y1) #Finding all nearby grids to beam line
 			# For all nearby grid, check if they are occupied
 			for p in len(grids):
-				occupied = checkOccupancy(p)
-				if occupied:
-					return sqrt((p.x-x0)**2 + (p.y-y0)**2) # * resolution??
+				if self.checkOccupancy(p):
+					return sqrt((p.x-x0)**2 + (p.y-y0)**2)*self.map.resolution
 			# If none are occupied, return max range
 			return self.laser_max_range
 
@@ -334,8 +330,16 @@
 
 		def sensorCallback(self, msg):
 
-			#Do something about the obervation before initializing
+			self.particleFilter.weightUpdate(msg)
 
+			#Laser min/max angle and range are constant and will only be set the first time
+			if (self.particleFilter.laser_max_range ==0):
+				self.laser_min_angle = msg.angle_min
+				self.laser_max_angle = msg.angle_max
+				self.laser_min_range = msg.range_min
+				self.laser_max_range = msg.range_max
+
+			##Charotte/Kari Anne, skal dette brukes til noe??
 			self.particleFilter.dx = 0
 			self.particleFilter.dy = 0
 			self.particleFilter.dtheta = 0
