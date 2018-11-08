@@ -21,16 +21,22 @@ class Particle(object):
 		self.id = id
 
 class Map(object):
-	def __init__(self,map):
-		self.map = map
-		self.width = map.info.width
-		self.height = map.info.height
-		self.resolution = map.info.resolution #Meter per cells
+	def __init__(self,msg):
+		self.data = msg.data
+		self.width = msg.info.width
+		self.height = msg.info.height
+		self.resolution = msg.info.resolution #Meter per cells
 
 		# The origin of the map [m, m, rad].  This is the real-world pose of the cell (0,0) in the map.
 		self.origin = Pose()
-		self.origin.x = map.info.origin.position.x
-		self.origin.y = map.info.origin.position.y
+		self.origin.position.x = msg.info.origin.position.x
+		self.origin.position.y = msg.info.origin.position.y
+
+		# Map boundaries real world
+		self.xMin = -(self.height*self.resolution)/2
+		self.xMax = (self.width*self.resolution)/2
+		self.yMin = -(self.height*self.resolution)/2
+		self.yMax = (self.height*self.resolution)/2
 
 
 class ParticleFilter(object):
@@ -44,12 +50,6 @@ class ParticleFilter(object):
 
 		#OccupancyGrid Map
 		self.map= None
-
-		# Map boundaries
-		self.xMin = -30
-		self.xMax = 30
-		self.yMin = -30
-		self.yMax = 30
 
 		# Set number of particles
 		self.nParticles = 100
@@ -86,20 +86,21 @@ class ParticleFilter(object):
 
 	def initializeParticles(self):
 		#Initialize particles and distributes uniformly randomly within the workspace.
-		for i in range(1,self.nParticles):
+		for i in range(0,self.nParticles):
 			free = True
 			while free:
-				xi = numpy.random.uniform(self.xMin, self.xMax)
-				yi = numpy.random.uniform(self.yMin, self.yMax)
+				xi = numpy.random.uniform(self.map.xMin, self.map.xMax)
+				yi = numpy.random.uniform(self.map.yMin, self.map.yMax)
 				row, col = self.metricToGrid(xi, yi)
 
 				#If the cell is free, there is a probability that the robot is located here
-				if not self.isOccupied((row,col)):
+				if not(self.isOccupied((row,col))):
 					thetai = numpy.random.uniform(0, 2*pi)
 
 					particlei = Particle(xi, yi, thetai, i)
 					self.particles.append(particlei)
 					free = False
+		print('All particles initialized')
 
 
 	def getOdom(self,msg):
@@ -201,32 +202,32 @@ class ParticleFilter(object):
 		print(self.particles)
 
 
-		for particle in self.particles:
-			self.predictParticlePose(particle)
+		#for particle in self.particles:
+			#self.predictParticlePose(particle)
 
-		print('Particles AFTER update')
-		print(self.particles)
+		#print('Particles AFTER update')
+		#print(self.particles)
 
 
-		self.particleFilter.dx = 0
-		self.particleFilter.dy = 0
-		self.particleFilter.dtheta = 0
+		self.dx = 0
+		self.dy = 0
+		self.dtheta = 0
 
 		q = 1
 		for particle in self.particles:
 			for i in range(0,len(msg.ranges)):
-				zt = msg.range[i]	#(Note: values < range_min or > range_max should be discarded)
+				zt = msg.ranges[i]	#(Note: values < range_min or > range_max should be discarded)
 				angle = radians(i) - self.laser_min_angle
 				if (zt >= self.laser_min_range or zt <= self.laser_max_range):
 					zt_star = self.raycasting(particle,angle)
-					p = self.zHit * self.get_pHit(self,zt, zt_star) +self.zShort*self.get_pShort(zt, zt_star) + self.zMax* self.get_pMax(zt) +self.zRand*self.get_pRand(zt)
+					p = self.zHit * self.get_pHit(zt,zt_star) +self.zShort*self.get_pShort(zt, zt_star) + self.zMax* self.get_pMax(zt) +self.zRand*self.get_pRand(zt)
 					q = q * p
 					if q == 0:
 						q = 1e-20 #If q is zero then reassign q a small probability
 			self.weights.append(q)
 		print('Weight array:')
 		print(self.weights)
-		self.resample()
+		#self.resample()
 
 
 	def raycasting(self, particle,angle):
@@ -236,9 +237,9 @@ class ParticleFilter(object):
 		x1,y1= self.metricToGrid(particle.x+self.laser_max_range*cos(theta),particle.y+self.laser_max_range*sin(theta)) #Converting into grid
 		grids=self.bresenhamLineAlg(x0,x1,y0,y1) #Finding all nearby grids to beam line
 		# For all nearby grid, check if they are occupied
-		for p in len(grids):
+		for p in grids:
 			if self.isOccupied(p):
-				return sqrt((p.x-x0)**2 + (p.y-y0)**2)*self.map.resolution
+				return sqrt((p[0]-x0)**2 + (p[1]-y0)**2)*self.map.resolution
 		# If none are occupied, return max range
 		return self.laser_max_range
 
@@ -290,8 +291,9 @@ class ParticleFilter(object):
 
 	def metricToGrid(self,x,y):
 		# Origin is the real-world pose of the cell (0,0) in the map.
-		gridX = (x-self.map.origin.x)/self.map.resolution
-		gridY = (y-self.map.origin.y)/self.map.resolution
+		gridX = int((x-self.map.origin.position.x)/self.map.resolution)
+		gridY = int((y-self.map.origin.position.y)/self.map.resolution)
+
 		#check if valid grid coordinates
 		if (gridX < 0):
 			gridX=0
@@ -305,10 +307,18 @@ class ParticleFilter(object):
 
 		return (gridX,gridY)
 
+	#Data is row-major indexed A[0][1] = a12
 	def isOccupied(self,grid):
-		if (self.map.data(grid) == 0):
+		index = self.findMapIndex(grid)
+		if (self.map.data[index] == 0):
 			return False
 		return True
+
+
+	def findMapIndex(self,grid):
+		return int(grid[0] * self.map.width + grid[1])
+
+
 
 
 	def resample(self, newParticles):
@@ -322,8 +332,9 @@ class MCL(object):
 
 		self.particleFilter = ParticleFilter()
 
-		self.map = None
 		rospy.Subscriber("/map", OccupancyGrid, self.mapCallback)
+		#To make sure the map is built before the initialization starts:
+		rospy.sleep(1)
 
 		# set number of particles, standard or set
 		# shall we have no parameters in?
@@ -337,7 +348,7 @@ class MCL(object):
 		self.posePublisher = rospy.Publisher("Poses", Pose, queue_size=10)  # pulish of position+orioentation to topic poses, type Poses
 		self.particlesPublisher = rospy.Publisher("PoseArrays", PoseArray, queue_size=10)  # publisher of particles in poseArray
 		#rospy.Subscriber("/RosAria/pose", Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
-		#rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
+		rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
 		rospy.spin()
 
 	# for at vi skal kunne "lagre" og ha tilgjengelig tidligere meldinger, maa dette haandteres i Particle filter der
