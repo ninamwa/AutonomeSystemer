@@ -321,8 +321,16 @@ class ParticleFilter(object):
 
 
 
-	def resample(self, newParticles):
-		return 0
+	def resample(self):
+
+
+		# DO SOMETHING, redistribuate current particles
+
+
+
+
+
+
 
 
 class MCL(object):
@@ -360,6 +368,27 @@ class MCL(object):
 		self.particleFilter.getOdom(msg)
 		#Here we will need something to adjust the time : mutex acquire and release
 
+	def publishPoseArray(self):
+		pa = PoseArray()
+		pa.header.frame_id = "map"
+		pa.header.stamp = rospy.Time.now()
+		count = 0;
+		bol = True;
+		rate = rospy.Rate(10)  # 10hz
+		while bol: #if you want it to stop after publish once or not rospy.is_shutdown() for continous
+			for particle in self.particleFilter.particles:
+				msg = self.particleFilter.createPose(particle)
+				pa.poses.append(msg)
+				rospy.sleep(0.001)
+				self.posePublisher.publish(msg)
+				count += 1
+				if count == len(self.particleFilter.particles):
+					bol = False
+		rospy.sleep(0.001)
+		self.particlesPublisher.publish(pa)
+		rate.sleep()
+
+
 	def sensorCallback(self, msg):
 
 		#Laser min/max angle and range are constant and will only be set the first time
@@ -377,7 +406,7 @@ class MCL(object):
 	def runMCL(self):
 		rate = rospy.Rate(20)
 		while not rospy.is_shutdown():
-			# Publish particles to filter in rviz
+			self.publishPoseArray()
 			rate.sleep()
 
 
