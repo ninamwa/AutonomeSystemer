@@ -6,6 +6,7 @@
 	from geometry_msgs.msg import Pose
 	from geometry_msgs.msg import PoseArray
 	from std_msgs.msg import LaserScan
+	from nav_msgs.msg import OccupancyGrid
 	import tf # A little unsure about this one
 	import numpy
 
@@ -19,8 +20,20 @@
 			self.theta = theta
 			self.id = id
 
+	class Map(object):
+		def __init__(self,map):
+			self.map = map
+			self.width = map.info.width
+			self.height = map.info.height
+			self.resolution = map.info.resolution #Meter per cells
 
-	class ParticleFilter(object):
+			# The origin of the map [m, m, rad].  This is the real-world pose of the cell (0,0) in the map.
+			self.origin = Pose()
+			self.origin.x = map.info.origin.position.x
+			self.origin.y = map.info.origin.position.y
+
+
+	class ParticleFilter(object,map):
 		def __init__(self):
 			self.particles = []
 			self.weights = []
@@ -28,6 +41,7 @@
 			self.laser_max_angle = 0
 			self.laser_min_range = 0
 			self.laser_max_range = 0
+			self.map=map
 
 			# Map boundaries
 			self.xMin = -30
@@ -198,18 +212,18 @@
 							q = 1e-20 #If q is zero then reassign q a small probability
 				self.weights.append(q)
 
-		def resample(self, newParticles):
-			return 0
 
 		def raycasting(self, particle,zt):
-			##Finn start og slutt
-			x0,y0 = particle.x,particle.y ###TO GRID CORD
-			x1,y1= particle.x+self.laser_max_range*cos(particle.theta),particle.y+self.laser_max_range*sin(particle.theta) ##TO GRID CORD
-			points=self.bresenhamLineAlg(x0,x1,y0,y1)
-			for p in len(points):
-				occupied = #check if grid is occupied
+			#Find start and end point of beam
+			x0,y0 = self.metricToGrid(particle.x,particle.y) #Converting into grid
+			x1,y1= self.metricToGrid(particle.x+self.laser_max_range*cos(particle.theta),particle.y+self.laser_max_range*sin(particle.theta)) #Converting into grid
+			grids=self.bresenhamLineAlg(x0,x1,y0,y1) #Finding all nearby grids to beam line
+			# For all nearby grid, check if they are occupied
+			for p in len(grids):
+				occupied = checkOccupancy(p)
 				if occupied:
 					return sqrt((p.x-x0)**2 + (p.y-y0)**2) # * resolution??
+			# If none are occupied, return max range
 			return self.laser_max_range
 
 
@@ -258,6 +272,31 @@
 				points.reverse()
 			return(points)
 
+		def metricToGrid(self,x,y):
+			# Origin is the real-world pose of the cell (0,0) in the map.
+			gridX = (x-map.origin.x)/map.resolution
+			gridY = (y-map.origin.y)/map.resolution
+			#check if valid grid coordinates
+			if (gridX < 0):
+				gridX=0
+			elif (gridX > map.width):
+				gridX=map.width
+
+			if (gridY<0):
+				gridY=0
+			elif (gridY > map.height):
+				gridY=map.height
+
+			return (gridX,gridY)
+
+		def checkOccupancy(self,grid):
+			if (map.data(grid) == 0):
+				return False
+			return True
+
+
+		def resample(self, newParticles):
+			return 0
 
 
 	class MCL(object):
@@ -265,9 +304,10 @@
 		def __init__(self):
 			rospy.init_node('monteCarlo', anonymous=True)  # Initialize node, set anonymous=true
 
-			# open map goes here
+			self.map = None
+			rospy.Subscriber("/map", OccupancyGrid, self.mapCallback)
 
-			self.particleFilter = ParticleFilter()
+			self.particleFilter = ParticleFilter(map)
 			# set number of particles, standard or set
 			# shall we have no parameters in?
 
@@ -301,6 +341,9 @@
 			self.particleFilter.dtheta = 0
 
 
+		def mapCallback(self, msg):
+			self.map = Map(msg)
+			rospy.loginfo("New map was set")
 
 		def runMCL(self):
 			rate = rospy.Rate(20)
