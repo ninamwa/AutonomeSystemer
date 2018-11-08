@@ -319,22 +319,14 @@ class ParticleFilter(object):
 		return int(grid[0] * self.map.width + grid[1])
 
 
-
-
-	def resample(self):
-
-
-		# DO SOMETHING, redistribuate current particles
-
-
-
+	#	def resample(self):
+		#DO SOMETHING, redistribuate current particles
 
 
 
 
 
 class MCL(object):
-
 	def __init__(self):
 		rospy.init_node('monteCarlo', anonymous=True)  # Initialize node, set anonymous=true
 
@@ -356,7 +348,7 @@ class MCL(object):
 		self.posePublisher = rospy.Publisher("Poses", Pose, queue_size=10)  # pulish of position+orioentation to topic poses, type Poses
 		self.particlesPublisher = rospy.Publisher("PoseArrays", PoseArray, queue_size=10)  # publisher of particles in poseArray
 		#rospy.Subscriber("/RosAria/pose", Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
-		rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
+		#rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
 		rospy.spin()
 
 	# for at vi skal kunne "lagre" og ha tilgjengelig tidligere meldinger, maa dette haandteres i Particle filter der
@@ -372,8 +364,8 @@ class MCL(object):
 		pa = PoseArray()
 		pa.header.frame_id = "map"
 		pa.header.stamp = rospy.Time.now()
-		count = 0;
-		bol = True;
+		count = 0
+		bol = True
 		rate = rospy.Rate(10)  # 10hz
 		while bol: #if you want it to stop after publish once or not rospy.is_shutdown() for continous
 			for particle in self.particleFilter.particles:
@@ -403,7 +395,7 @@ class MCL(object):
 	def mapCallback(self, msg):
 		self.particleFilter.createMap(msg)
 
-	def runMCL(self):
+	def runmcl(self):
 		rate = rospy.Rate(20)
 		while not rospy.is_shutdown():
 			self.publishPoseArray()
@@ -415,4 +407,4 @@ if __name__ =="__main__":
 	# Initialize MCL
 	# Inputs are needed for Particle Filter, or should we just set them there? NINA
 	monteCarlo = MCL()
-	monteCarlo.runMCL()
+	monteCarlo.runmcl()
