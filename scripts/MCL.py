@@ -71,12 +71,12 @@
 			self.u = []
 
 			#Measurement parameters
-			self.lambdaShort = 0
+			self.lambdaShort = 0.1
 			self.zHit = 0.25
 			self.zShort = 0.25
 			self.zMax = 0.25
 			self.zRand = 0.25
-			self.sigmaHit = 0
+			self.sigmaHit = 0.2
 
 		def initializeParticles(self):
 			#Initialize particles and distributes uniformly randomly within the workspace.
@@ -85,11 +85,10 @@
 				while free:
 					xi = numpy.random.uniform(self.xMin, self.xMax)
 					yi = numpy.random.uniform(self.yMin, self.yMax)
-					#må lage denne metoden: metricToGrid
 					row, col = self.metricToGrid(xi, yi)
 
 					#If the cell is free, there is a probability that the robot is located here
-					if self.gridBinder[row, col]:
+					if not self.isOccupied((row,col)):
 						thetai = numpy.random.uniform(0, 2*pi)
 
 						particlei = Particle(xi, yi, thetai, i)
@@ -120,8 +119,8 @@
 			self.dy = newpose[1]-oldpose[1]
 			self.dtheta = newpose[2]-oldpose[2]
 
-			deltatrans = math.sqrt(self.dx ** 2 + self.dy ** 2)
-			deltarot1 = math.atan2(self.dy, self.dx) - oldpose[2]
+			deltatrans = sqrt(self.dx ** 2 + self.dy ** 2)
+			deltarot1 = atan2(self.dy, self.dx) - oldpose[2]
 			deltarot2 = oldpose[2] - theta - deltarot1
 
 			self.u = [deltatrans, deltarot1, deltarot2]
@@ -131,9 +130,9 @@
 		def predictParticlePose(self,particle):
 		# Predict new pose for a particle after action u is performed over a timeinterval dt
 
-			dtbt = self.u[0] - self.sample(alfa3 * self.u[0] + alfa4 * (self.u[1] * self.u[2]))
-			dtb1 = self.u[1] - self.sample(alfa1*self.u[1] + alfa2*self.u[0])
-			dtb2 = self.u[2] - self.sample(alfa1*self.u[2] + alfa2*self.u[0])
+			dtbt = self.u[0] - self.sample(self.alfa3 * self.u[0] + self.alfa4 * (self.u[1] * self.u[2]))
+			dtb1 = self.u[1] - self.sample(self.alfa1*self.u[1] + self.alfa2*self.u[0])
+			dtb2 = self.u[2] - self.sample(self.alfa1*self.u[2] + self.alfa2*self.u[0])
 
 			particle.x = particle.x + dtbt*cos(particle.theta+dtb1)
 			particle.y = particle.y + dtbt*sin(particle.theta+dtb1)
@@ -194,6 +193,9 @@
 
 			for particle in self.particles:
 				self.predictParticlePose(particle)
+			self.particleFilter.dx = 0
+			self.particleFilter.dy = 0
+			self.particleFilter.dtheta = 0
 
 			q = 1
 			for particle in self.particles:
@@ -207,6 +209,7 @@
 						if q == 0:
 							q = 1e-20 #If q is zero then reassign q a small probability
 				self.weights.append(q)
+			self.resample()
 
 
 		def raycasting(self, particle,angle):
@@ -217,7 +220,7 @@
 			grids=self.bresenhamLineAlg(x0,x1,y0,y1) #Finding all nearby grids to beam line
 			# For all nearby grid, check if they are occupied
 			for p in len(grids):
-				if self.checkOccupancy(p):
+				if self.isOccupied(p):
 					return sqrt((p.x-x0)**2 + (p.y-y0)**2)*self.map.resolution
 			# If none are occupied, return max range
 			return self.laser_max_range
@@ -285,7 +288,7 @@
 
 			return (gridX,gridY)
 
-		def checkOccupancy(self,grid):
+		def isOccupied(self,grid):
 			if (map.data(grid) == 0):
 				return False
 			return True
@@ -330,19 +333,13 @@
 
 		def sensorCallback(self, msg):
 
-			self.particleFilter.weightUpdate(msg)
-
 			#Laser min/max angle and range are constant and will only be set the first time
 			if (self.particleFilter.laser_max_range ==0):
 				self.laser_min_angle = msg.angle_min
 				self.laser_max_angle = msg.angle_max
 				self.laser_min_range = msg.range_min
 				self.laser_max_range = msg.range_max
-
-			##Charotte/Kari Anne, skal dette brukes til noe??
-			self.particleFilter.dx = 0
-			self.particleFilter.dy = 0
-			self.particleFilter.dtheta = 0
+			self.particleFilter.weightUpdate(msg)
 
 
 		def mapCallback(self, msg):
