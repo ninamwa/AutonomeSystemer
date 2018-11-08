@@ -33,7 +33,7 @@ class Map(object):
 		self.origin.y = map.info.origin.position.y
 
 
-class ParticleFilter(object,map):
+class ParticleFilter(object):
 	def __init__(self):
 		self.particles = []
 		self.weights = []
@@ -41,7 +41,9 @@ class ParticleFilter(object,map):
 		self.laser_max_angle = 0
 		self.laser_min_range = 0
 		self.laser_max_range = 0
-		self.map=map
+
+		#OccupancyGrid Map
+		self.map= None
 
 		# Map boundaries
 		self.xMin = -30
@@ -77,6 +79,10 @@ class ParticleFilter(object,map):
 		self.zMax = 0.25
 		self.zRand = 0.25
 		self.sigmaHit = 0.2
+
+	def createMap(self,msg):
+		self.map = Map(msg)
+		print('New map is made')
 
 	def initializeParticles(self):
 		#Initialize particles and distributes uniformly randomly within the workspace.
@@ -284,23 +290,23 @@ class ParticleFilter(object,map):
 
 	def metricToGrid(self,x,y):
 		# Origin is the real-world pose of the cell (0,0) in the map.
-		gridX = (x-map.origin.x)/map.resolution
-		gridY = (y-map.origin.y)/map.resolution
+		gridX = (x-self.map.origin.x)/self.map.resolution
+		gridY = (y-self.map.origin.y)/self.map.resolution
 		#check if valid grid coordinates
 		if (gridX < 0):
 			gridX=0
-		elif (gridX > map.width):
-			gridX=map.width
+		elif (gridX > self.map.width):
+			gridX=self.map.width
 
 		if (gridY<0):
 			gridY=0
-		elif (gridY > map.height):
-			gridY=map.height
+		elif (gridY > self.map.height):
+			gridY=self.map.height
 
 		return (gridX,gridY)
 
 	def isOccupied(self,grid):
-		if (map.data(grid) == 0):
+		if (self.map.data(grid) == 0):
 			return False
 		return True
 
@@ -314,10 +320,11 @@ class MCL(object):
 	def __init__(self):
 		rospy.init_node('monteCarlo', anonymous=True)  # Initialize node, set anonymous=true
 
+		self.particleFilter = ParticleFilter()
+
 		self.map = None
 		rospy.Subscriber("/map", OccupancyGrid, self.mapCallback)
 
-		self.particleFilter = ParticleFilter(map)
 		# set number of particles, standard or set
 		# shall we have no parameters in?
 
@@ -354,8 +361,7 @@ class MCL(object):
 
 
 	def mapCallback(self, msg):
-		self.map = Map(msg)
-		rospy.loginfo("New map was set")
+		self.particleFilter.createMap(msg)
 
 	def runMCL(self):
 		rate = rospy.Rate(20)
