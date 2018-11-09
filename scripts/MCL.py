@@ -326,15 +326,24 @@ class ParticleFilter(object):
 	def findMapIndex(self,grid):
 		return int(grid[0] * self.map.width + grid[1])
 
+	def length(vec):
+		s = 0
+		for num in vec:
+			s += num ** 2
+		s = math.sqrt(s)
+		return s
 
-	def resample(self, newParticles):
 	# Resampling the particles to get a new probability distribution Xt. The particles with
 	# high weight have a higher probability of being resampled, than the ones with lower.
 	# INPUT: newParticles??
+	def resample(self, newParticles):
 		weights_norm = []
+		length_vec = self.length(self.weights)
 		rand = 0.0
+
+		# Normalize vector weights
 		for p in self.weights:
-			term = self.weights[p] / len(self.weights)
+			term = self.weights[p] / length_vec
 			weights_norm.append(term)
 
 		cumsum = []
@@ -350,7 +359,7 @@ class ParticleFilter(object):
 			for j in cumsum:
 				if rand > j:
 					k += 1
-			resp = self.weights[k]  # Denne partikkelen resamoples
+			resp = self.weights[k]  # Denne partikkelen skal resamoples
 			newParticles.append(Particle(resp.x, resp.y, resp.theta, resp.id))
 
 
