@@ -54,6 +54,7 @@ class ParticleFilter(object):
 		# Set number of particles
 		self.nParticles = 100
 
+
 		# Last odometry measurements
 		self.lastOdom = None
 
@@ -326,11 +327,31 @@ class ParticleFilter(object):
 		return int(grid[0] * self.map.width + grid[1])
 
 
-	#	def resample(self):
-		#DO SOMETHING, redistribuate current particles
+	def resample(self, newParticles):
+	# Resampling the particles to get a new probability distribution Xt. The particles with
+	# high weight have a higher probability of being resampled, than the ones with lower.
+	# INPUT: newParticles??
+		weights_norm = []
+		rand = 0.0
+		for p in self.weights:
+			term = self.weights[p] / len(self.weights)
+			weights_norm.append(term)
 
+		cumsum = []
+		sum, index = 0, 0
+		for i in weights_norm:
+			sum += weights_norm[index]
+			cumsum.append(sum)
+			index += 1
 
-
+		for i in cumsum:
+			rand = numpy.random.uniform(0, 1)
+			k = 0
+			for j in cumsum:
+				if rand > j:
+					k += 1
+			resp = self.weights[k]  # Denne partikkelen resamoples
+			newParticles.append(Particle(resp.x, resp.y, resp.theta, resp.id))
 
 
 class MCL(object):
