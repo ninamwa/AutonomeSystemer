@@ -354,7 +354,7 @@ class ParticleFilter(object):
 			index += 1
 
 		for i in cumsum:
-			rand = numpy.random.uniform(0, 1)
+			rand = numpy.random.uniform(0, 1) * max(cumsum)
 			k = 0
 			for j in cumsum:
 				if rand > j:
