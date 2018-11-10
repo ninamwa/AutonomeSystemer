@@ -9,7 +9,7 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
 import tf # A little unsure about this one
 import numpy
-
+import random
 
 class Particle(object):
 	def __init__(self,x,y,theta, id):
@@ -42,6 +42,7 @@ class Map(object):
 class ParticleFilter(object):
 	def __init__(self):
 		self.particles = []
+		self.newParticles = []
 		self.weights = []
 		self.laser_min_angle = 0
 		self.laser_max_angle = 0
@@ -56,10 +57,10 @@ class ParticleFilter(object):
 
 
 		# Last odometry measurements
-		self.lastOdom = None
+		self.lastOdom = Odometry()
 
 		# Current odometry measurements
-		self.Odom = None
+		self.Odom = Odometry()
 
 		#Initialize alpha
 		self.alfa1 = self.alfa2 = self.alfa3 = self.alfa4 = 1
@@ -161,9 +162,15 @@ class ParticleFilter(object):
 
 	#sample from normal distribution
 	def sample(self, num):
+		su =0
+		a = -num
+		b=num
+		if a>b:
+			a=num
+			b=-num
 		for i in range(0,12):
-			sum += numpy.random(-num,num)
-		return 0.5*sum
+			su += numpy.random.randint(a,b)
+		return 0.5*su
 
 
 	def get_pMax(self, zt):
@@ -206,11 +213,15 @@ class ParticleFilter(object):
 		self.weights= []
 
 		print('Particles BEFORE update')
-		print(self.particles)
+		for particle in self.particles:
 
+			print(particle.x)
 
-		#for particle in self.particles:
-			#self.predictParticlePose(particle)
+		print('Particles AFTER update')
+		for particle in self.particles:
+
+			self.predictParticlePose(particle)
+			print(particle.x)
 
 		#print('Particles AFTER update')
 		#print(self.particles)
@@ -235,7 +246,7 @@ class ParticleFilter(object):
 			self.weights.append(q)
 		print('Weight array:')
 		print(self.weights)
-		#self.resample()
+		self.resample()
 
 
 	def raycasting(self, particle,angle):
@@ -336,14 +347,14 @@ class ParticleFilter(object):
 	# Resampling the particles to get a new probability distribution Xt. The particles with
 	# high weight have a higher probability of being resampled, than the ones with lower.
 	# INPUT: newParticles??
-	def resample(self, newParticles):
+	def resample(self):
 		weights_norm = []
-		length_vec = self.length(self.weights)
+		length_vec = len(self.weights)
 		rand = 0.0
 
 		# Normalize vector weights
-		for p in self.weights:
-			term = self.weights[p] / length_vec
+		for weight in self.weights:
+			term = weight/ length_vec
 			weights_norm.append(term)
 
 		cumsum = []
@@ -359,8 +370,8 @@ class ParticleFilter(object):
 			for j in cumsum:
 				if rand > j:
 					k += 1
-			resp = self.weights[k]  # Denne partikkelen skal resamoples
-			newParticles.append(Particle(resp.x, resp.y, resp.theta, resp.id))
+			resp = self.particles[k]  # Denne partikkelen skal resamoples
+			self.newParticles.append(Particle(resp.x, resp.y, resp.theta, resp.id))
 
 
 class MCL(object):
@@ -385,7 +396,7 @@ class MCL(object):
 		self.posePublisher = rospy.Publisher("Poses", Pose, queue_size=10)  # pulish of position+orioentation to topic poses, type Poses
 		self.particlesPublisher = rospy.Publisher("PoseArrays", PoseArray, queue_size=10)  # publisher of particles in poseArray
 		rospy.Subscriber("/RosAria/pose", Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
-		#rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
+		rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
 		rospy.spin()
 
 	# for at vi skal kunne "lagre" og ha tilgjengelig tidligere meldinger, maa dette haandteres i Particle filter der
@@ -404,14 +415,14 @@ class MCL(object):
 		count = 0
 		bol = True
 		rate = rospy.Rate(10)  # 10hz
-		while bol: #if you want it to stop after publish once or not rospy.is_shutdown() for continous
-			for particle in self.particleFilter.particles:
+		while not rospy.is_shutdown():#bol: #if you want it to stop after publish once or not rospy.is_shutdown() for continous
+			for particle in self.particleFilter.newParticles:
 				msg = self.particleFilter.createPose(particle)
 				pa.poses.append(msg)
 				rospy.sleep(0.001)
 				self.posePublisher.publish(msg)
 				count += 1
-				if count == len(self.particleFilter.particles):
+				if count == len(self.particleFilter.newParticles):
 					bol = False
 		rospy.sleep(0.001)
 		self.particlesPublisher.publish(pa)
