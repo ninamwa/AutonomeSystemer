@@ -63,7 +63,7 @@ class ParticleFilter(object):
 		self.Odom = Odometry()
 
 		#Initialize alpha
-		self.alfa1 = self.alfa2 = self.alfa3 = self.alfa4 = 1
+		self.alfa = [3.0, 3.0, 3.0, 3.0]
 
 
 		# Relative change in x,y,theta over time dt since the last time particles were updated
@@ -72,7 +72,7 @@ class ParticleFilter(object):
 		self.dtheta = 0
 
 		# Initialize control signal u from odometry
-		self.u = []
+		self.u = [0, 0, 0]
 
 		#Measurement parameters
 		self.lambdaShort = 0.1
@@ -135,17 +135,24 @@ class ParticleFilter(object):
 		self.u = [deltatrans, deltarot1, deltarot2]
 
 
+
 	# This needs to be called inside sensorupdate with a for loop
 	def predictParticlePose(self,particle):
-	# Predict new pose for a particle after action u is performed over a timeinterval dt
+	#Predict new pose for a particle after action u is performed over a timeinterval dt
+		bol = True
+		while bol:
+			dtbt = self.u[0] - self.sample(self.alfa[2] * self.u[0] + self.alfa[3] * (self.u[1] * self.u[2]))
+			dtb1 = self.u[1] - self.sample(self.alfa[0]*self.u[1] + self.alfa[1]*self.u[0])
+			dtb2 = self.u[2] - self.sample(self.alfa[0]*self.u[2] + self.alfa[1]*self.u[0])
 
-		dtbt = self.u[0] - self.sample(self.alfa3 * self.u[0] + self.alfa4 * (self.u[1] * self.u[2]))
-		dtb1 = self.u[1] - self.sample(self.alfa1*self.u[1] + self.alfa2*self.u[0])
-		dtb2 = self.u[2] - self.sample(self.alfa1*self.u[2] + self.alfa2*self.u[0])
+			x = particle.x + dtbt*cos(particle.theta+dtb1)
+			y = particle.y + dtbt*sin(particle.theta+dtb1)
 
-		particle.x = particle.x + dtbt*cos(particle.theta+dtb1)
-		particle.y = particle.y + dtbt*sin(particle.theta+dtb1)
-		particle.theta = particle.theta + dtb1 + dtb2
+			if (x< self.map.xMax and x>self.map.xMin and y<self.map.yMax and y>self.map.yMin):
+				particle.x = x
+				particle.y = y
+				particle.theta = particle.theta + dtb1 + dtb2
+				bol = False
 
 
 	#Creates message of type Pose from Particle()
@@ -163,13 +170,13 @@ class ParticleFilter(object):
 	#sample from normal distribution
 	def sample(self, num):
 		su =0
-		a = -num
-		b=num
-		if a>b:
+		a =-num
+		b= num
+		if a >= b:
 			a=num
 			b=-num
 		for i in range(0,12):
-			su += numpy.random.randint(a,b)
+			su += numpy.random.random_integers(a,b)
 		return 0.5*su
 
 
@@ -212,19 +219,16 @@ class ParticleFilter(object):
 	def weightUpdate(self,msg):
 		self.weights= []
 
-		print('Particles BEFORE update')
-		for particle in self.particles:
+		#print('Particles BEFORE update')
+		#for particle in self.particles:
 
-			print(particle.x)
+			#print(particle.x)
 
-		print('Particles AFTER update')
+		#print('Particles AFTER update')
 		for particle in self.particles:
 
 			self.predictParticlePose(particle)
-			print(particle.x)
-
-		#print('Particles AFTER update')
-		#print(self.particles)
+			#print(particle.x)
 
 
 		self.dx = 0
@@ -397,7 +401,7 @@ class MCL(object):
 		self.particlesPublisher = rospy.Publisher("PoseArrays", PoseArray, queue_size=10)  # publisher of particles in poseArray
 		rospy.Subscriber("/RosAria/pose", Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
 		rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
-		rospy.spin()
+		#rospy.spin()
 
 	# for at vi skal kunne "lagre" og ha tilgjengelig tidligere meldinger, maa dette haandteres i Particle filter der
 	# ting foregaar.
@@ -410,21 +414,22 @@ class MCL(object):
 
 	def publishPoseArray(self):
 		pa = PoseArray()
+		print("heyalleihopa")
 		pa.header.frame_id = "map"
 		pa.header.stamp = rospy.Time.now()
 		count = 0
 		bol = True
 		rate = rospy.Rate(10)  # 10hz
-		while not rospy.is_shutdown():#bol: #if you want it to stop after publish once or not rospy.is_shutdown() for continous
+		while bol: #if you want it to stop after publish once or not rospy.is_shutdown() for continous
 			for particle in self.particleFilter.newParticles:
 				msg = self.particleFilter.createPose(particle)
 				pa.poses.append(msg)
-				rospy.sleep(0.001)
+				rospy.sleep(0.01)
 				self.posePublisher.publish(msg)
 				count += 1
 				if count == len(self.particleFilter.newParticles):
 					bol = False
-		rospy.sleep(0.001)
+		rospy.sleep(0.01)
 		self.particlesPublisher.publish(pa)
 		rate.sleep()
 
@@ -444,7 +449,7 @@ class MCL(object):
 		self.particleFilter.createMap(msg)
 
 	def runmcl(self):
-		rate = rospy.Rate(20)
+		rate = rospy.Rate(10)
 		while not rospy.is_shutdown():
 			self.publishPoseArray()
 			rate.sleep()
