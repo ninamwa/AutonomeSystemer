@@ -415,7 +415,7 @@ class MCL(object):
 	def publishPoseArray(self):
 		pa = PoseArray()
 		print("heyalleihopa")
-		pa.header.frame_id = "map"
+		pa.header.frame_id = "camera_depth_frame"
 		pa.header.stamp = rospy.Time.now()
 		count = 0
 		bol = True
