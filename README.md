@@ -9,7 +9,6 @@ cd scripts
   
 2. Run the prefered bashfile with rosrun <package> <.bash-file>  
   2.1 To run with Robot and Camera:  
-      rosrun beginner_tutorials launchAll.bash  
-        
+      rosrun beginner_tutorials launchAll.bash    
   2.2 To run in simulation-mode with rosbag:  
       rosrun beginner_tutorials launchSimulation.bash  
