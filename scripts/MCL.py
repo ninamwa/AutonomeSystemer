@@ -250,7 +250,12 @@ class ParticleFilter(object):
 			self.weights.append(q)
 		print('Weight array:')
 		print(self.weights)
+
+
+		#TEST
+		self.newParticles = []
 		self.resample()
+		self.particles = self.newParticles
 
 
 	def raycasting(self, particle,angle):
@@ -378,6 +383,7 @@ class ParticleFilter(object):
 			self.newParticles.append(Particle(resp.x, resp.y, resp.theta, resp.id))
 
 
+
 class MCL(object):
 	def __init__(self):
 		rospy.init_node('monteCarlo', anonymous=True)  # Initialize node, set anonymous=true
@@ -414,25 +420,23 @@ class MCL(object):
 
 	def publishPoseArray(self):
 		pa = PoseArray()
-		print("heyalleihopa")
-		pa.header.frame_id = "camera_depth_frame"
+		pa.header.frame_id = "odom"
 		pa.header.stamp = rospy.Time.now()
-		count = 0
-		bol = True
 		rate = rospy.Rate(10)  # 10hz
-		while bol: #if you want it to stop after publish once or not rospy.is_shutdown() for continous
-			for particle in self.particleFilter.newParticles:
-				msg = self.particleFilter.createPose(particle)
-				pa.poses.append(msg)
-				rospy.sleep(0.01)
-				self.posePublisher.publish(msg)
-				count += 1
-				if count == len(self.particleFilter.newParticles):
-					bol = False
+		for particle in self.particleFilter.newParticles:
+			msg = self.particleFilter.createPose(particle)
+			pa.poses.append(msg)
+			rospy.sleep(0.01)
+			self.posePublisher.publish(msg)
 		rospy.sleep(0.01)
 		self.particlesPublisher.publish(pa)
 		rate.sleep()
 
+			# FORSLAG, men her maa noe gores med tid
+			# Etter at partiklene er publisert settes de til de gamle verdiene, som saa skal gjennom iterasjonen?
+			# new particles tommes -  vil dette tomme rviz?
+			#self.particleFilter.newParticles = []
+			#this solution gave empty weight
 
 	def sensorCallback(self, msg):
 
