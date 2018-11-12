@@ -7,8 +7,7 @@ How to run:
 roscd beginner_tutorials  
 cd scripts  
   
-2. Run the prefered bashfile with rosrun <package> <.bash-file> 
-    
+2. Run the prefered bashfile with rosrun <package> <.bash-file>  
   2.1 To run with Robot and Camera:  
       rosrun beginner_tutorials launchAll.bash  
         
