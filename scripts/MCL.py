@@ -109,7 +109,7 @@ class ParticleFilter(object):
 
 	def getOdom(self,msg):
 		self.lastOdom = self.Odom
-		self.Odom = msgs
+		self.Odom = msg
 
 		oldx = self.lastOdom.pose.pose.position.x
 		oldy = self.lastOdom.pose.pose.position.y
@@ -197,10 +197,15 @@ class ParticleFilter(object):
 
 	def get_pHit(self,zt,zt_star):
 		#N = (1/sqrt(2*pi*self.sigmaHit**2))*exp(-0.5*((zt-zt_star)**2) / (self.sigmaHit**2))
-		print('zt_star:')
+
+		print('zt:')
+		print(zt)
+		print('zt_true')
 		print(zt_star)
 		N1 = 1/sqrt(2*pi*self.sigmaHit**2)
+		print('N2:')
 		N2 = exp((-0.5*(zt-zt_star)**2)/(self.sigmaHit**2))
+		print(N2)
 		def integrand(x):
 			return (1 / sqrt(2 * pi * self.sigmaHit ** 2)) * exp(-0.5 * ((x - zt_star) ** 2) / (self.sigmaHit ** 2))
 
@@ -234,8 +239,6 @@ class ParticleFilter(object):
 
 		q = 1
 		for particle in self.particles:
-			print('antall sensor:')
-			print(len(msg.ranges))
 			for i in range(0,len(msg.ranges)):
 				zt = msg.ranges[i]	#(Note: values < range_min or > range_max should be discarded)
 				angle = radians(i) - self.laser_min_angle
@@ -248,9 +251,6 @@ class ParticleFilter(object):
 					if q == 0:
 						q = 1e-20 #If q is zero then reassign q a small probability
 			particle.weight = q
-		print('Weight array:')
-		#print(self.weights)
-
 
 		#TEST
 		self.newParticles = []
@@ -260,11 +260,7 @@ class ParticleFilter(object):
 
 	def raycasting(self, particle,angle):
 		theta= particle.theta+angle-(pi/2) ##?????????????
-		#Find start and end point of beam
-		print('particle x:')
-		print(particle.x)
-		print('particle x2:')
-		print(particle.x+self.laser_max_range*cos(theta))
+
 		x0,y0 = self.metricToGrid(particle.x,particle.y) #Converting into grid
 		x1,y1 = self.metricToGrid(particle.x+self.laser_max_range*cos(theta),particle.y+self.laser_max_range*sin(theta)) #Converting into grid
 		grids=self.bresenhamLineAlg(x0,x1,y0,y1) #Finding all nearby grids to beam line
@@ -361,7 +357,7 @@ class ParticleFilter(object):
 			s += particle.weight**2
 			weights_temp.append(particle.weight)
 		s = sqrt(s)
-		weights_temp=weights_temp/s
+		weights_temp[:] = [x / s for x in weights_temp]
 
 
 		cumsum = []
@@ -439,13 +435,12 @@ class MCL(object):
 			#this solution gave empty weight
 
 	def sensorCallback(self, msg):
-
 		#Laser min/max angle and range are constant and will only be set the first time
-		if (self.particleFilter.laser_max_range ==0):
-			self.laser_min_angle = msg.angle_min
-			self.laser_max_angle = msg.angle_max
-			self.laser_min_range = msg.range_min
-			self.laser_max_range = msg.range_max
+		if (self.particleFilter.laser_max_range == 0):
+			self.particleFilter.laser_min_angle = msg.angle_min
+			self.particleFilter.laser_max_angle = msg.angle_max
+			self.particleFilter.laser_min_range = msg.range_min
+			self.particleFilter.laser_max_range = msg.range_max
 		self.particleFilter.weightUpdate(msg)
 
 
