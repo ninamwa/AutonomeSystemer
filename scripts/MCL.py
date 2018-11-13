@@ -12,13 +12,13 @@ import numpy
 import random
 
 class Particle(object):
-	def __init__(self,x,y,theta, id):
+	def __init__(self,x,y,theta, weight):
 
 		#Need id to identify particles for assigning weight
 		self.x = x
 		self.y = y
 		self.theta = theta
-		self.id = id
+		self.weight = weight
 
 class Map(object):
 	def __init__(self,msg):
@@ -42,8 +42,11 @@ class Map(object):
 class ParticleFilter(object):
 	def __init__(self):
 		self.particles = []
+
+		# Set number of particles
+		self.nParticles = 10
+
 		self.newParticles = []
-		self.weights = []
 		self.laser_min_angle = 0
 		self.laser_max_angle = 0
 		self.laser_min_range = 0
@@ -52,8 +55,7 @@ class ParticleFilter(object):
 		#OccupancyGrid Map
 		self.map= None
 
-		# Set number of particles
-		self.nParticles = 100
+		self.init_weight = 1/self.nParticles
 
 
 		# Last odometry measurements
@@ -99,7 +101,7 @@ class ParticleFilter(object):
 				if not(self.isOccupied((row,col))):
 					thetai = numpy.random.uniform(0, 2*pi)
 
-					particlei = Particle(xi, yi, thetai, i)
+					particlei = Particle(xi, yi, thetai, self.init_weight)
 					self.particles.append(particlei)
 					free = False
 		print('All particles initialized')
@@ -107,7 +109,7 @@ class ParticleFilter(object):
 
 	def getOdom(self,msg):
 		self.lastOdom = self.Odom
-		self.Odom = msg
+		self.Odom = msgs
 
 		oldx = self.lastOdom.pose.pose.position.x
 		oldy = self.lastOdom.pose.pose.position.y
@@ -194,41 +196,36 @@ class ParticleFilter(object):
 
 
 	def get_pHit(self,zt,zt_star):
-		N = (1/sqrt(2*pi*self.sigmaHit**2))*exp(-0.5*((zt-zt_star)**2) / (self.sigmaHit**2))
-
+		#N = (1/sqrt(2*pi*self.sigmaHit**2))*exp(-0.5*((zt-zt_star)**2) / (self.sigmaHit**2))
+		print('zt_star:')
+		print(zt_star)
+		N1 = 1/sqrt(2*pi*self.sigmaHit**2)
+		N2 = exp((-0.5*(zt-zt_star)**2)/(self.sigmaHit**2))
 		def integrand(x):
 			return (1 / sqrt(2 * pi * self.sigmaHit ** 2)) * exp(-0.5 * ((x - zt_star) ** 2) / (self.sigmaHit ** 2))
 
-		n_temp = integrate.quad(integrand,0,self.laser_max_range)
-		n = 1/n_temp[0]
+		#n_temp = integrate.quad(integrand,0,self.laser_max_range)
+		#n = 1/n_temp[0]
 		if zt >= 0 and zt < self.laser_max_range:
-			return n * N
+			return (N1*N2)
 		else:
 			return 0
 
 
 
+
 	def get_pShort(self,zt,zt_star):
-		n = 1/(1-exp(-self.lambdaShort*zt_star))
+		#n = 1/(1-exp(-self.lambdaShort*zt_star))
 		if zt >= 0 and zt < zt_star:
-			return n*self.lambdaShort*exp(-self.lambdaShort*zt)
+			return self.lambdaShort*exp(-self.lambdaShort*zt)
 		else:
 			return 0
 
 	#Measurement model
 	def weightUpdate(self,msg):
-		self.weights= []
 
-		#print('Particles BEFORE update')
-		#for particle in self.particles:
-
-			#print(particle.x)
-
-		#print('Particles AFTER update')
 		for particle in self.particles:
-
 			self.predictParticlePose(particle)
-			#print(particle.x)
 
 
 		self.dx = 0
@@ -237,19 +234,22 @@ class ParticleFilter(object):
 
 		q = 1
 		for particle in self.particles:
+			print('antall sensor:')
+			print(len(msg.ranges))
 			for i in range(0,len(msg.ranges)):
 				zt = msg.ranges[i]	#(Note: values < range_min or > range_max should be discarded)
 				angle = radians(i) - self.laser_min_angle
 				if (zt >= self.laser_min_range or zt <= self.laser_max_range):
 					zt_star = self.raycasting(particle,angle)
+					p = self.get_pHit(zt,zt_star)
 					#p = self.zHit * self.get_pHit(zt,zt_star) +self.zShort*self.get_pShort(zt, zt_star) + self.zMax* self.get_pMax(zt) +self.zRand*self.get_pRand(zt)
-					p = self.zMax * self.get_pMax(zt) + self.zRand * self.get_pRand(zt)
+					#p = self.zMax * self.get_pMax(zt) + self.zRand * self.get_pRand(zt)
 					q = q * p
 					if q == 0:
 						q = 1e-20 #If q is zero then reassign q a small probability
-			self.weights.append(q)
+			particle.weight = q
 		print('Weight array:')
-		print(self.weights)
+		#print(self.weights)
 
 
 		#TEST
@@ -261,8 +261,12 @@ class ParticleFilter(object):
 	def raycasting(self, particle,angle):
 		theta= particle.theta+angle-(pi/2) ##?????????????
 		#Find start and end point of beam
+		print('particle x:')
+		print(particle.x)
+		print('particle x2:')
+		print(particle.x+self.laser_max_range*cos(theta))
 		x0,y0 = self.metricToGrid(particle.x,particle.y) #Converting into grid
-		x1,y1= self.metricToGrid(particle.x+self.laser_max_range*cos(theta),particle.y+self.laser_max_range*sin(theta)) #Converting into grid
+		x1,y1 = self.metricToGrid(particle.x+self.laser_max_range*cos(theta),particle.y+self.laser_max_range*sin(theta)) #Converting into grid
 		grids=self.bresenhamLineAlg(x0,x1,y0,y1) #Finding all nearby grids to beam line
 		# For all nearby grid, check if they are occupied
 		for p in grids:
@@ -346,41 +350,37 @@ class ParticleFilter(object):
 	def findMapIndex(self,grid):
 		return int(grid[0] * self.map.width + grid[1])
 
-	def length(vec):
-		s = 0
-		for num in vec:
-			s += num ** 2
-		s = math.sqrt(s)
-		return s
 
 	# Resampling the particles to get a new probability distribution Xt. The particles with
 	# high weight have a higher probability of being resampled, than the ones with lower.
 	# INPUT: newParticles??
 	def resample(self):
-		weights_norm = []
-		length_vec = len(self.weights)
-		rand = 0.0
+		weights_temp=[]
+		s=0
+		for particle in self.particles:
+			s += particle.weight**2
+			weights_temp.append(particle.weight)
+		s = sqrt(s)
+		weights_temp=weights_temp/s
 
-		# Normalize vector weights
-		for weight in self.weights:
-			term = weight/ length_vec
-			weights_norm.append(term)
 
 		cumsum = []
-		sum, index = 0, 0
-		for i in weights_norm:
-			sum += weights_norm[index]
+		sum = 0
+		for weight in weights_temp:
+			sum += weight
 			cumsum.append(sum)
-			index += 1
 
-		for i in cumsum:
+		for i in range (0,len(cumsum)):
 			rand = numpy.random.uniform(0, 1) * max(cumsum)
 			k = 0
 			for j in cumsum:
 				if rand > j:
 					k += 1
-			resp = self.particles[k]  # Denne partikkelen skal resamoples
-			self.newParticles.append(Particle(resp.x, resp.y, resp.theta, resp.id))
+			resp = self.particles[k]  # Denne partikkelen skal resamples
+			resp.weight = self.init_weight
+			self.newParticles.append(resp)
+
+
 
 
 
