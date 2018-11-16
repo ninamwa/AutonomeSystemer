@@ -25,7 +25,7 @@ class Map(object):
 		self.data = msg.data
 		self.width = msg.info.width
 		self.height = msg.info.height
-		self.resolution = msg.info.resolution #Meter per cells
+		self.resolution = msg.info.resolution #Meter per cell
 
 		# The origin of the map [m, m, rad].  This is the real-world pose of the cell (0,0) in the map.
 		self.origin = Pose()
@@ -33,10 +33,10 @@ class Map(object):
 		self.origin.position.y = msg.info.origin.position.y
 
 		# Map boundaries real world
-		self.xMin = -(self.height*self.resolution)/2
-		self.xMax = (self.width*self.resolution)/2
-		self.yMin = -(self.height*self.resolution)/2
-		self.yMax = (self.height*self.resolution)/2
+		self.xMin =  0#-(self.height*self.resolution)/2.0
+		self.xMax = self.width*self.resolution #(self.height*self.resolution)/2.0
+		self.yMin = 0#-(self.width*self.resolution)/2.0
+		self.yMax = self.height*self.resolution #(self.width*self.resolution)/2.0
 
 
 class ParticleFilter(object):
@@ -44,7 +44,7 @@ class ParticleFilter(object):
 		self.particles = []
 
 		# Set number of particles
-		self.nParticles = 10
+		self.nParticles = 1000
 
 		self.newParticles = []
 		self.laser_min_angle = 0
@@ -98,13 +98,14 @@ class ParticleFilter(object):
 				row, col = self.metricToGrid(xi, yi)
 
 				#If the cell is free, there is a probability that the robot is located here
+				#used to be (row,col)
 				if not(self.isOccupied((row,col))):
 					thetai = numpy.random.uniform(0, 2*pi)
-
 					particlei = Particle(xi, yi, thetai, self.init_weight)
 					self.particles.append(particlei)
 					free = False
 		print('All particles initialized')
+
 
 
 	def getOdom(self,msg):
@@ -151,6 +152,7 @@ class ParticleFilter(object):
 			y = particle.y + dtbt*sin(particle.theta+dtb1)
 
 			if (x< self.map.xMax and x>self.map.xMin and y<self.map.yMax and y>self.map.yMin):
+
 				particle.x = x
 				particle.y = y
 				particle.theta = particle.theta + dtb1 + dtb2
@@ -198,19 +200,20 @@ class ParticleFilter(object):
 	def get_pHit(self,zt,zt_star):
 		#N = (1/sqrt(2*pi*self.sigmaHit**2))*exp(-0.5*((zt-zt_star)**2) / (self.sigmaHit**2))
 
-		print('zt:')
-		print(zt)
-		print('zt_true')
-		print(zt_star)
+		#print('zt:')
+		#print(zt)
+		#print('zt_true')
+		#print(zt_star)
 		N1 = 1/sqrt(2*pi*self.sigmaHit**2)
-		print('N2:')
+		#print('N2:')
 		N2 = exp((-0.5*(zt-zt_star)**2)/(self.sigmaHit**2))
-		print(N2)
+		#print(N2)
 		def integrand(x):
 			return (1 / sqrt(2 * pi * self.sigmaHit ** 2)) * exp(-0.5 * ((x - zt_star) ** 2) / (self.sigmaHit ** 2))
 
 		#n_temp = integrate.quad(integrand,0,self.laser_max_range)
 		#n = 1/n_temp[0]
+
 		if zt >= 0 and zt < self.laser_max_range:
 			return (N1*N2)
 		else:
@@ -229,6 +232,7 @@ class ParticleFilter(object):
 	#Measurement model
 	def weightUpdate(self,msg):
 
+		#CHANGED FOR DEBUG
 		for particle in self.particles:
 			self.predictParticlePose(particle)
 
@@ -252,7 +256,7 @@ class ParticleFilter(object):
 						q = 1e-20 #If q is zero then reassign q a small probability
 			particle.weight = q
 
-		#TEST
+		#REMOVED FOR DEBUG
 		self.newParticles = []
 		self.resample()
 		self.particles = self.newParticles
@@ -319,21 +323,18 @@ class ParticleFilter(object):
 
 	def metricToGrid(self,x,y):
 		# Origin is the real-world pose of the cell (0,0) in the map.
-		gridX = int((x-self.map.origin.position.x)/self.map.resolution)
-		gridY = int((y-self.map.origin.position.y)/self.map.resolution)
-
+		grid_x = int(x/self.map.resolution) #-self.map.origin.position.x
+		grid_y = int(y/self.map.resolution) #-self.map.origin.position.y
 		#check if valid grid coordinates
-		if (gridX < 0):
-			gridX=0
-		elif (gridX > self.map.width):
-			gridX=self.map.width
-
-		if (gridY<0):
-			gridY=0
-		elif (gridY > self.map.height):
-			gridY=self.map.height
-
-		return (gridX,gridY)
+		if (grid_x <0):
+		    grid_x=0
+		elif (grid_x > self.map.width):
+			grid_x=self.map.width
+		if (grid_y<0):
+			grid_y=0
+		elif (grid_y > self.map.height):
+			grid_y=self.map.height
+		return (grid_x,grid_y)
 
 	#Data is row-major indexed A[0][1] = a12
 	def isOccupied(self,grid):
@@ -343,13 +344,14 @@ class ParticleFilter(object):
 		return True
 
 
-	def findMapIndex(self,grid):
-		return int(grid[0] * self.map.width + grid[1])
+	def findMapIndex(self,grid): #grid(x,y) = row,col
+		 #grid[0] = x = row
+		 #grid[1] = y = col
+		return int(((grid[1]-1)*self.map.width) + grid[0])
 
 
 	# Resampling the particles to get a new probability distribution Xt. The particles with
 	# high weight have a higher probability of being resampled, than the ones with lower.
-	# INPUT: newParticles??
 	def resample(self):
 		weights_temp=[]
 		s=0
@@ -377,9 +379,6 @@ class ParticleFilter(object):
 			self.newParticles.append(resp)
 
 
-
-
-
 class MCL(object):
 	def __init__(self):
 		rospy.init_node('monteCarlo', anonymous=True)  # Initialize node, set anonymous=true
@@ -389,9 +388,6 @@ class MCL(object):
 		rospy.Subscriber("/map", OccupancyGrid, self.mapCallback)
 		#To make sure the map is built before the initialization starts:
 		rospy.sleep(1)
-
-		# set number of particles, standard or set
-		# shall we have no parameters in?
 
 		# Initialize particle set in particle filter
 		self.particleFilter.initializeParticles()
@@ -416,10 +412,11 @@ class MCL(object):
 
 	def publishPoseArray(self):
 		pa = PoseArray()
-		pa.header.frame_id = "odom"
+		pa.header.frame_id = "map"
 		pa.header.stamp = rospy.Time.now()
-		rate = rospy.Rate(10)  # 10hz
-		for particle in self.particleFilter.newParticles:
+		rate = rospy.Rate(10)  #
+		#CHANGE BACK TO newParticles
+		for particle in self.particleFilter.particles:
 			msg = self.particleFilter.createPose(particle)
 			pa.poses.append(msg)
 			rospy.sleep(0.01)
@@ -429,10 +426,6 @@ class MCL(object):
 		rate.sleep()
 
 			# FORSLAG, men her maa noe gores med tid
-			# Etter at partiklene er publisert settes de til de gamle verdiene, som saa skal gjennom iterasjonen?
-			# new particles tommes -  vil dette tomme rviz?
-			#self.particleFilter.newParticles = []
-			#this solution gave empty weight
 
 	def sensorCallback(self, msg):
 		#Laser min/max angle and range are constant and will only be set the first time
@@ -448,7 +441,7 @@ class MCL(object):
 		self.particleFilter.createMap(msg)
 
 	def runmcl(self):
-		rate = rospy.Rate(10)
+		rate = rospy.Rate(0.2)
 		while not rospy.is_shutdown():
 			self.publishPoseArray()
 			rate.sleep()

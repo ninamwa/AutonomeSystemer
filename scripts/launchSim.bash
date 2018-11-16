@@ -9,7 +9,8 @@ echo "Launching in simulation mode with rosbag"
 #catkin build
 
 xterm -title "Roscore" -e roscore &
-sleep 3
+sleep 5
+rosparam set use_sim_time true
 #Open new terminal and run transform file:
 #xterm -title "TF" -e "roslaunch tf.launch" &
 #sleep 1
@@ -20,6 +21,6 @@ sleep 1
 xterm -title "Rosrun" -e "rosrun rviz rviz -d rvizconfig.rviz" &
 sleep 1
 #Run bagfile in new terminal
-xterm -title "RosBag" -e "rosbag play testbag.bag" &
+xterm -title "RosBag" -e "rosbag play testbag.bag --clock --pause" &
 #Run python script
 rosrun beginner_tutorials MCL.py
