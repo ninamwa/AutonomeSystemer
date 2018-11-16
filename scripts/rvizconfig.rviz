@@ -58,7 +58,7 @@ Visualization Manager:
       Axes Length: 0.300000012
       Axes Radius: 0.00999999978
       Class: rviz/PoseArray
-      Color: 255; 255; 0
+      Color: 255; 0; 127
       Enabled: true
       Head Length: 1
       Head Radius: 1
@@ -88,7 +88,13 @@ Visualization Manager:
           Value: false
         camera_depth_frame:
           Value: false
-        map:
+        camera_depth_optical_frame:
+          Value: true
+        camera_link:
+          Value: true
+        camera_rgb_frame:
+          Value: true
+        camera_rgb_optical_frame:
           Value: true
         odom:
           Value: false
@@ -98,9 +104,7 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        map:
-          camera_depth_frame:
-            {}
+        {}
       Update Interval: 0
       Value: true
   Enabled: true
@@ -127,7 +131,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: 0.0599996187
+      Angle: 0.0499996208
       Class: rviz/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.0599999987
@@ -137,7 +141,7 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.00999999978
-      Scale: 17.2284374
+      Scale: 43.6036453
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
       X: 9.93220139

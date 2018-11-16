@@ -9,12 +9,13 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
 import tf # A little unsure about this one
 import numpy
+from bresenham import bresenham
 import random
 
 class Particle(object):
 	def __init__(self,x,y,theta, weight):
 
-		#Need id to identify particles for assigning weight
+		# METRIC
 		self.x = x
 		self.y = y
 		self.theta = theta
@@ -32,9 +33,9 @@ class Map(object):
 		self.origin.position.x = msg.info.origin.position.x
 		self.origin.position.y = msg.info.origin.position.y
 
-		# Map boundaries real world
+		# Map boundaries real world METRIC
 		self.xMin =  0#-(self.height*self.resolution)/2.0
-		self.xMax = self.width*self.resolution #(self.height*self.resolution)/2.0
+		self.xMax = self.width*self.resolution
 		self.yMin = 0#-(self.width*self.resolution)/2.0
 		self.yMax = self.height*self.resolution #(self.width*self.resolution)/2.0
 
@@ -44,7 +45,7 @@ class ParticleFilter(object):
 		self.particles = []
 
 		# Set number of particles
-		self.nParticles = 1000
+		self.nParticles = 10
 
 		self.newParticles = []
 		self.laser_min_angle = 0
@@ -88,7 +89,7 @@ class ParticleFilter(object):
 		self.map = Map(msg)
 		print('New map is made')
 
-	def initializeParticles(self):
+	def initializeParticles(self): #metric
 		#Initialize particles and distributes uniformly randomly within the workspace.
 		for i in range(0,self.nParticles):
 			free = True
@@ -142,21 +143,30 @@ class ParticleFilter(object):
 	# This needs to be called inside sensorupdate with a for loop
 	def predictParticlePose(self,particle):
 	#Predict new pose for a particle after action u is performed over a timeinterval dt
-		bol = True
-		while bol:
-			dtbt = self.u[0] - self.sample(self.alfa[2] * self.u[0] + self.alfa[3] * (self.u[1] * self.u[2]))
-			dtb1 = self.u[1] - self.sample(self.alfa[0]*self.u[1] + self.alfa[1]*self.u[0])
-			dtb2 = self.u[2] - self.sample(self.alfa[0]*self.u[2] + self.alfa[1]*self.u[0])
+		dtbt = self.u[0] - self.sample(self.alfa[2] * self.u[0] + self.alfa[3] * (self.u[1] * self.u[2]))
+		dtb1 = self.u[1] - self.sample(self.alfa[0] * self.u[1] + self.alfa[1] * self.u[0])
+		dtb2 = self.u[2] - self.sample(self.alfa[0] * self.u[2] + self.alfa[1] * self.u[0])
+		newx = particle.x + dtbt * cos(particle.theta + dtb1)
+		newy= particle.y + dtbt * sin(particle.theta + dtb1)
 
-			x = particle.x + dtbt*cos(particle.theta+dtb1)
-			y = particle.y + dtbt*sin(particle.theta+dtb1)
+		start = self.metricToGrid(particle.x,particle.y)
+		current = start
+		end = self.metricToGrid(newx,newy)
 
-			if (x< self.map.xMax and x>self.map.xMin and y<self.map.yMax and y>self.map.yMin):
+		#cells = self.bresenhamLineAlg(start[0], start[1], end[0], end[1])
+		cells = list(bresenham(start[0], start[1], end[0], end[1]))
+		count =0
+		#while count < len(cells):
+		for grid in cells:
+			if(not self.isOccupied(grid)):
+				current = grid
+			if(self.isOccupied(grid) or (current[0]==end[0] and current[1]==end[1])):
+				break
+			count +=1
 
-				particle.x = x
-				particle.y = y
-				particle.theta = particle.theta + dtb1 + dtb2
-				bol = False
+		particle.x = current[0]*self.map.resolution
+		particle.y = current[1]*self.map.resolution
+		particle.theta = particle.theta + dtb1 + dtb2
 
 
 	#Creates message of type Pose from Particle()
@@ -232,10 +242,8 @@ class ParticleFilter(object):
 	#Measurement model
 	def weightUpdate(self,msg):
 
-		#CHANGED FOR DEBUG
 		for particle in self.particles:
 			self.predictParticlePose(particle)
-
 
 		self.dx = 0
 		self.dy = 0
@@ -264,10 +272,10 @@ class ParticleFilter(object):
 
 	def raycasting(self, particle,angle):
 		theta= particle.theta+angle-(pi/2) ##?????????????
-
 		x0,y0 = self.metricToGrid(particle.x,particle.y) #Converting into grid
 		x1,y1 = self.metricToGrid(particle.x+self.laser_max_range*cos(theta),particle.y+self.laser_max_range*sin(theta)) #Converting into grid
-		grids=self.bresenhamLineAlg(x0,x1,y0,y1) #Finding all nearby grids to beam line
+		grids = list(bresenham(x0,y0,x1,y1))
+		#grids=self.bresenhamLineAlg(x0,x1,y0,y1) #Finding all nearby grids to beam line
 		# For all nearby grid, check if they are occupied
 		for p in grids:
 			if self.isOccupied(p):
@@ -307,6 +315,7 @@ class ParticleFilter(object):
 
 		for x in range(x0, x1 + 1):
 			if is_steep:
+				#was (y,x)
 				points.append((y, x))
 			else:
 				points.append((x, y))
@@ -339,7 +348,7 @@ class ParticleFilter(object):
 	#Data is row-major indexed A[0][1] = a12
 	def isOccupied(self,grid):
 		index = self.findMapIndex(grid)
-		if (self.map.data[index] == 0):
+		if (self.map.data[index-1] == 0):
 			return False
 		return True
 
@@ -359,6 +368,9 @@ class ParticleFilter(object):
 			s += particle.weight**2
 			weights_temp.append(particle.weight)
 		s = sqrt(s)
+		#DEBUG
+		if(s==0):
+			s=0.00001
 		weights_temp[:] = [x / s for x in weights_temp]
 
 
@@ -392,6 +404,9 @@ class MCL(object):
 		# Initialize particle set in particle filter
 		self.particleFilter.initializeParticles()
 
+		# Check if first publish
+		self.it = 0
+
 
 		# Do something about the time
 
@@ -415,14 +430,22 @@ class MCL(object):
 		pa.header.frame_id = "map"
 		pa.header.stamp = rospy.Time.now()
 		rate = rospy.Rate(10)  #
-		#CHANGE BACK TO newParticles
-		for particle in self.particleFilter.particles:
-			msg = self.particleFilter.createPose(particle)
-			pa.poses.append(msg)
-			rospy.sleep(0.01)
-			self.posePublisher.publish(msg)
+		if (self.it==1):
+			for particle in self.particleFilter.newParticles:
+				msg = self.particleFilter.createPose(particle)
+				pa.poses.append(msg)
+				rospy.sleep(0.01)
+				self.posePublisher.publish(msg)
+		if (self.it==0):
+			for particle in self.particleFilter.particles:
+				msg = self.particleFilter.createPose(particle)
+				pa.poses.append(msg)
+				rospy.sleep(0.01)
+				self.posePublisher.publish(msg)
+
 		rospy.sleep(0.01)
 		self.particlesPublisher.publish(pa)
+		#self.it =1
 		rate.sleep()
 
 			# FORSLAG, men her maa noe gores med tid
