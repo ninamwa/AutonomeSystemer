@@ -9,7 +9,6 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
 import tf # A little unsure about this one
 import numpy
-from bresenham import bresenham
 import random
 
 class Particle(object):
@@ -139,7 +138,7 @@ class ParticleFilter(object):
 		self.u = [deltatrans, deltarot1, deltarot2]
 
 
-
+git 
 	# This needs to be called inside sensorupdate with a for loop
 	def predictParticlePose(self,particle):
 	#Predict new pose for a particle after action u is performed over a timeinterval dt
@@ -153,8 +152,8 @@ class ParticleFilter(object):
 		current = start
 		end = self.metricToGrid(newx,newy)
 
-		#cells = self.bresenhamLineAlg(start[0], start[1], end[0], end[1])
-		cells = list(bresenham(start[0], start[1], end[0], end[1]))
+		cells = self.bresenhamLineAlg(start[0], start[1], end[0], end[1])
+		#cells = list(bresenham(start[0], start[1], end[0], end[1]))
 		count =0
 		#while count < len(cells):
 		for grid in cells:
@@ -221,11 +220,11 @@ class ParticleFilter(object):
 		def integrand(x):
 			return (1 / sqrt(2 * pi * self.sigmaHit ** 2)) * exp(-0.5 * ((x - zt_star) ** 2) / (self.sigmaHit ** 2))
 
-		#n_temp = integrate.quad(integrand,0,self.laser_max_range)
-		#n = 1/n_temp[0]
-
+		n_temp = integrate.quad(integrand,0,self.laser_max_range)
+		#print('n_temp:')
+		#print(n_temp[0])
 		if zt >= 0 and zt < self.laser_max_range:
-			return (N1*N2)
+			return (N1*N2)/n_temp[0]
 		else:
 			return 0
 
@@ -261,7 +260,7 @@ class ParticleFilter(object):
 					#p = self.zMax * self.get_pMax(zt) + self.zRand * self.get_pRand(zt)
 					q = q * p
 					if q == 0:
-						q = 1e-20 #If q is zero then reassign q a small probability
+						q = 1e-300 #If q is zero then reassign q a small probability
 			particle.weight = q
 
 		#REMOVED FOR DEBUG
@@ -271,11 +270,11 @@ class ParticleFilter(object):
 
 
 	def raycasting(self, particle,angle):
-		theta= particle.theta+angle-(pi/2) ##?????????????
+		theta= particle.theta+angle-(pi/2)
 		x0,y0 = self.metricToGrid(particle.x,particle.y) #Converting into grid
 		x1,y1 = self.metricToGrid(particle.x+self.laser_max_range*cos(theta),particle.y+self.laser_max_range*sin(theta)) #Converting into grid
-		grids = list(bresenham(x0,y0,x1,y1))
-		#grids=self.bresenhamLineAlg(x0,x1,y0,y1) #Finding all nearby grids to beam line
+		#grids = list(bresenham(x0,y0,x1,y1))
+		grids=self.bresenhamLineAlg(x0,x1,y0,y1) #Finding all nearby grids to beam line
 		# For all nearby grid, check if they are occupied
 		for p in grids:
 			if self.isOccupied(p):
@@ -400,6 +399,9 @@ class MCL(object):
 		rospy.Subscriber("/map", OccupancyGrid, self.mapCallback)
 		#To make sure the map is built before the initialization starts:
 		rospy.sleep(1)
+
+		# set number of particles, standard or set
+		# shall we have no parameters in?
 
 		# Initialize particle set in particle filter
 		self.particleFilter.initializeParticles()
