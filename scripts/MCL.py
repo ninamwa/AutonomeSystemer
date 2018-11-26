@@ -49,7 +49,7 @@ class ParticleFilter(object):
         self.particles = []
 
         # Set number of particles
-        self.nParticles = 500
+        self.nParticles = 200
 
         self.newParticles = []
         self.laser_min_angle = 0
@@ -69,7 +69,7 @@ class ParticleFilter(object):
         self.Odom = Odometry()
 
         # Initialize alpha
-        self.alfa = [3.0, 3.0, 3.0, 3.0]
+        self.alfa = [0.001, 0.10, 0.10, 0.001]
 
         # Relative change in x,y,theta over time dt since the last time particles were updated
         self.dx = 0
@@ -86,9 +86,9 @@ class ParticleFilter(object):
         self.zMax = 0.25
         self.zRand = 0.25
         self.sigmaHit = 0.2
-
-		# Only re-sample when neff drops below a given threshold (M/2)
-		self.N_tres = self.nParticles / 2
+        # Only re-sample when neff drops below a given threshold (M/2)
+        #TEST HIGHER THRESHOLD
+        self.n_tres = self.nParticles*4 / 5
 
     def createMap(self, msg):
         self.map = Map(msg)
@@ -286,7 +286,6 @@ class ParticleFilter(object):
         for i, _ in enumerate(self.particles):
             self.predictParticlePose(self.particles[i])
 
-
         q = 1
         for particle in self.particles:
             # for i in range(0, len(msg.ranges)):
@@ -302,24 +301,29 @@ class ParticleFilter(object):
             #             q = 1e-300  # If q is zero then reassign q a small probability
             particle.weight = self.likelihood_field_range(particle,msg)
 
-		# Normalize weights to find N_eff
-		weights_temp = []
-		s = 0
-		for particle in self.particles:
-				s += particle.weight
-				weights_temp.append(particle.weight)
-		weights_temp = [x / s for x in weights_temp]
+        # Normalize weights to find n_eff
+        weights_temp = []
+        s= 0
+        for particle in self.particles:
+            s += particle.weight
+            weights_temp.append(particle.weight)
+        weights_temp = [x / s for x in weights_temp]
 
-		temp = 0
-		for weights in weights_temp:
-				temp += weights**2
-		N_eff = 1 / temp
+        temp = 0
 
-		# Only re-sample when N_eff drops below a given threshold N_tres
-		if N_eff < self.N_tres:
-				self.resample()
-				self.particles = self.newParticles
-				self.newParticles = []
+        for weight in weights_temp:
+            temp = temp + weight**2
+        n_eff = 1 / temp
+
+        #Only re-sample when n_eff dnops below a given threshold n_tres
+        if n_eff < self.n_tres:
+            self.resample()
+            print("I just resampled")
+        if n_eff >= self.n_tres:
+            self.newParticles = self.particles
+            print("I did not resample")
+        self.particles = self.newParticles
+        self.newParticles = []
 
     def raycasting(self, particle, angle):
         theta = particle.theta + angle - (pi / 2)
@@ -479,7 +483,7 @@ class MCL(object):
         pa = PoseArray()
         pa.header.frame_id = "map"
         pa.header.stamp = rospy.Time.now()
-        rate = rospy.Rate(10)  #
+        rate = rospy.Rate(30)  #
         if (self.it == 1):
             for particle in self.particleFilter.newParticles:
                 msg = self.particleFilter.createPose(particle)
@@ -515,7 +519,7 @@ class MCL(object):
         self.particleFilter.createMap(msg)
 
     def runmcl(self):
-        rate = rospy.Rate(0.2)
+        rate = rospy.Rate(30)
         while not rospy.is_shutdown():
             self.publishPoseArray()
             rate.sleep()
