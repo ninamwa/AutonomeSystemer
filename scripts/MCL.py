@@ -49,7 +49,7 @@ class ParticleFilter(object):
         self.particles = []
 
         # Set number of particles
-        self.nParticles = 200
+        self.nParticles =200
 
         self.newParticles = []
         self.laser_min_angle = 0
@@ -76,6 +76,7 @@ class ParticleFilter(object):
         self.dy = 0
         self.dtheta = 0
 
+        self.publ = True
         # Initialize control signal u from odometry
         self.u = [0, 0, 0]
 
@@ -480,27 +481,17 @@ class MCL(object):
     # Here we will need something to adjust the time : mutex acquire and release
 
     def publishPoseArray(self):
+        bol = True
         pa = PoseArray()
         pa.header.frame_id = "map"
         pa.header.stamp = rospy.Time.now()
-        rate = rospy.Rate(30)  #
-        if (self.it == 1):
-            for particle in self.particleFilter.newParticles:
-                msg = self.particleFilter.createPose(particle)
-                pa.poses.append(msg)
-                rospy.sleep(0.01)
-                self.posePublisher.publish(msg)
-        if (self.it == 0):
-            for particle in self.particleFilter.particles:
-                msg = self.particleFilter.createPose(particle)
-                pa.poses.append(msg)
-                rospy.sleep(0.01)
-                self.posePublisher.publish(msg)
-
-        rospy.sleep(0.01)
+        for particle in self.particleFilter.particles:
+            msg = self.particleFilter.createPose(particle)
+            pa.poses.append(msg)
+            bol = False
+        while bol:
+            pass
         self.particlesPublisher.publish(pa)
-        # self.it =1
-        rate.sleep()
 
     # FORSLAG, men her maa noe gores med tid
 
@@ -514,16 +505,19 @@ class MCL(object):
             self.particleFilter.laser_max_range = msg.range_max
         self.particleFilter.weightUpdate(msg)
         self.lock.release()
+        self.particleFilter.publ = True
+
 
     def mapCallback(self, msg):
         self.particleFilter.createMap(msg)
 
     def runmcl(self):
-        rate = rospy.Rate(30)
-        while not rospy.is_shutdown():
-            self.publishPoseArray()
-            rate.sleep()
-
+        rate = rospy.Rate(20)
+        if self.particleFilter.publ:
+            while not rospy.is_shutdown():
+                self.publishPoseArray()
+                rate.sleep()
+                self.particleFilter.publ = False
 
 if __name__ == "__main__":
     # Initialize MCL
