@@ -87,6 +87,9 @@ class ParticleFilter(object):
         self.zRand = 0.25
         self.sigmaHit = 0.2
 
+		# Only re-sample when neff drops below a given threshold (M/2)
+		self.N_tres = self.nParticles / 2
+
     def createMap(self, msg):
         self.map = Map(msg)
         print('New map is made')
@@ -299,12 +302,24 @@ class ParticleFilter(object):
             #             q = 1e-300  # If q is zero then reassign q a small probability
             particle.weight = self.likelihood_field_range(particle,msg)
 
+		# Normalize weights to find N_eff
+		weights_temp = []
+		s = 0
+		for particle in self.particles:
+				s += particle.weight
+				weights_temp.append(particle.weight)
+		weights_temp = [x / s for x in weights_temp]
 
+		temp = 0
+		for weights in weights_temp:
+				temp += weights**2
+		N_eff = 1 / temp
 
-        self.resample()
-        self.particles = self.newParticles
-        self.newParticles = []
-
+		# Only re-sample when N_eff drops below a given threshold N_tres
+		if N_eff < self.N_tres:
+				self.resample()
+				self.particles = self.newParticles
+				self.newParticles = []
 
     def raycasting(self, particle, angle):
         theta = particle.theta + angle - (pi / 2)
@@ -398,9 +413,6 @@ class ParticleFilter(object):
         for particle in self.particles:
             s += particle.weight
             weights_temp.append(particle.weight)
-        # DEBUG
-        if (s == 0):
-            s = 0.00001
         weights_temp = [x / s for x in weights_temp]
 
         cumsum = []
