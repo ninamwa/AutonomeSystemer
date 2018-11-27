@@ -512,11 +512,9 @@ class MCL(object):
         self.particleFilter.createMap(msg)
 
     def runmcl(self):
-        rate = rospy.Rate(20)
         if self.particleFilter.publ:
             while not rospy.is_shutdown():
                 self.publishPoseArray()
-                rate.sleep()
                 self.particleFilter.publ = False
 
 if __name__ == "__main__":
