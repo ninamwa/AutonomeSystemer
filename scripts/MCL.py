@@ -38,10 +38,10 @@ class Map(object):
         self.origin.position.y = msg.info.origin.position.y
 
         # Map boundaries real world METRIC
-        self.xMin = 0  # -(self.height*self.resolution)/2.0
+        self.xMin = 0
         self.xMax = self.width * self.resolution
-        self.yMin = 0  # -(self.width*self.resolution)/2.0
-        self.yMax = self.height * self.resolution  # (self.width*self.resolution)/2.0
+        self.yMin = 0
+        self.yMax = self.height * self.resolution  
 
 
 class ParticleFilter(object):
@@ -49,7 +49,7 @@ class ParticleFilter(object):
         self.particles = []
 
         # Set number of particles
-        self.nParticles = 10
+        self.nParticles = 200
 
         self.newParticles = []
         self.laser_min_angle = 0
@@ -69,7 +69,7 @@ class ParticleFilter(object):
         self.Odom = Odometry()
 
         # Initialize alpha
-        self.alfa = [3, 3, 3, 3]
+        self.alfa = [0.2, 0.2, 0.2, 0.2]
 
         # Relative change in x,y,theta over time dt since the last time particles were updated
         self.dx = 0
@@ -88,8 +88,7 @@ class ParticleFilter(object):
         self.zRand = 0.30
         self.sigmaHit = 1
         # Only re-sample when neff drops below a given threshold (M/2)
-        #TEST HIGHER THRESHOLD (opprinnelige 4/5=0.8)
-        self.n_tres = self.nParticles
+        self.n_tres = self.nParticles*0.8
 
         #Augmented MCL parameters
         self.w_slow=1
@@ -112,8 +111,8 @@ class ParticleFilter(object):
             free = True
             while free:
                 #smaller initialize area, closer to robot
-                xi = numpy.random.uniform(self.map.xMax/10, self.map.xMax/2)
-                yi = numpy.random.uniform(self.map.yMax/10, self.map.yMax/2)
+                xi = numpy.random.uniform(self.map.xMax/6, self.map.xMax/1.5)
+                yi = numpy.random.uniform(self.map.yMax/6, self.map.yMax/1.5)
                 row, col = self.metricToGrid(xi, yi)
 
                 # If the cell is free, there is a probability that the robot is located here
@@ -296,13 +295,14 @@ class ParticleFilter(object):
                 x_sens = particle.x + self.laser_max_range * cos(theta)
                 y_sens = particle.y + self.laser_max_range * sin(theta)
 
-                if (ztk >= self.laser_min_range or ztk <= self.laser_max_range):
-                    x= particle.x +x_sens*cos(particle.theta) - y_sens*sin(particle.theta) + ztk*cos(particle.theta + theta)
-                    y=particle.y + y_sens*sin(particle.theta)- x_sens*sin(particle.theta) + ztk*sin(particle.theta + theta)
+                if(ztk != numpy.inf):
+                    if (ztk >= self.laser_min_range or ztk <= self.laser_max_range):
+                        x= particle.x +x_sens*cos(particle.theta) - y_sens*sin(particle.theta) + ztk*cos(particle.theta + theta)
+                        y= particle.y + y_sens*sin(particle.theta)- x_sens*sin(particle.theta) + ztk*sin(particle.theta + theta)
 
-                    dist = self.minDistance(x,y)
+                        dist = self.minDistance(x,y)
 
-                    q = q*(self.zHit*self.prob(dist,self.sigmaHit**2)+self.zRand/self.zMax)
+                        q = q*(self.zHit*self.prob(dist,self.sigmaHit**2)+self.zRand/self.zMax)
             c+=1
         return q
 
@@ -328,20 +328,9 @@ class ParticleFilter(object):
     # Measurement model
     def weightUpdate(self, msg):
 
-
-        s=time.time()
         for i, _ in enumerate(self.particles):
             self.predictParticlePose(self.particles[i])
-        e=time.time()
-        #print("predict particle: ", e-s)
 
-
-        #s1=time.time()
-        #numpy.vectorize(self.predictParticlePose)(self.particles)
-        #e1=time.time()
-        #print("predict2: ", e1-s1)
-
-        start = time.time()
         q = 1
         self.w_avg=0
         for particle in self.particles:
@@ -350,7 +339,6 @@ class ParticleFilter(object):
             #particle.weight = self.beam_range_finder(particle,msg)
 
             self.w_avg = self.w_avg+((1.0/self.nParticles)*particle.weight)
-        end = time.time()
 
         a=time.time()
         # Normalize weights to find n_eff
@@ -363,16 +351,8 @@ class ParticleFilter(object):
 
         temp = 0
 
-        start= time.time()
         for weight in weights_temp:
             temp = temp + weight**2
-        end = time.time()
-        s2=time.time()
-
-        #x=numpy.square(weights_temp)
-        #a=numpy.sum(x)
-        #e2=time.time()
-        #print("numpy: ", e2-s2)
 
 
         n_eff = 1 / temp
@@ -477,10 +457,9 @@ class ParticleFilter(object):
 
         self.w_slow = self.w_slow + self.alpha_slow*(self.w_avg-self.w_slow)
         self.w_fast = self.w_fast + self.alpha_fast*(self.w_avg-self.w_fast)
-        w = max(0,1-(self.w_fast/self.w_slow)) ##w_slow maa vere storre enn w_fast hvis denne skal bli storre enn 0
+        w = max(0,1-(self.w_fast/self.w_slow))
+        w=0
         print('w:',w)
-
-        #weights_temp = numpy.array((self.nParticles,),buffer=self.particles.weight)
 
         weights_temp = []
         s = 0
@@ -510,15 +489,12 @@ class ParticleFilter(object):
             for j in cumsum:
                 if rand > j:
                     k += 1
-            print("K: ", k)
             if (k == len(weights_temp)-1 and bol):
-
                 self.newParticles.append(self.randomParticle())
             else:
                 rp = self.particles[k]  # resample_particle
                 resp = Particle(rp.x, rp.y, rp.theta, self.init_weight)  # Denne partikkelen skal resamples
                 self.newParticles.append(resp)
-            print(self.newParticles)
         bol=False
 
 
@@ -554,15 +530,10 @@ class MCL(object):
 
     # rospy.spin()
 
-    # for at vi skal kunne "lagre" og ha tilgjengelig tidligere meldinger, maa dette haandteres i Particle filter der
-    # ting foregaar.
-    # callback trengs for aa kunne lose tidsproblemet (mutex) dette har vi ikke sett paa naa, men
-    # implementerer korrekt naa, for aa slippe arbeid senere
 
     def odomCallback(self, msg):
         self.particleFilter.getOdom(msg)
 
-    # Here we will need something to adjust the time : mutex acquire and release
 
     def publishPoseArray(self):
         bol = True
@@ -577,7 +548,6 @@ class MCL(object):
             pass
         self.particlesPublisher.publish(pa)
 
-    # FORSLAG, men her maa noe gores med tid
 
     def sensorCallback(self, msg):
         s=time.time()
@@ -603,7 +573,5 @@ class MCL(object):
                 self.particleFilter.publ = False
 
 if __name__ == "__main__":
-    # Initialize MCL
-    # Inputs are needed for Particle Filter, or should we just set them there? NINA
     monteCarlo = MCL()
     monteCarlo.runmcl()
