@@ -110,15 +110,23 @@ class ParticleFilter(object):
             free = True
             while free:
                 #smaller initialize area, closer to robot
-                xi = numpy.random.uniform(self.map.xMax/2.8, self.map.xMax/1.7)
-                yi = numpy.random.uniform(self.map.yMax/2.7, self.map.yMax/1.7)
+                # For rosbag Nina2, the robot starts here:
+                x = 10.47
+                y = 9.53
+                theta = 0
+                #xi = numpy.random.uniform(self.map.xMax/2.8, self.map.xMax/1.7)
+                #yi = numpy.random.uniform(self.map.yMax/2.7, self.map.yMax/1.7)
+                xi = numpy.random.uniform(x-2, x+2)
+                yi = numpy.random.uniform(y-1.8, y+0.2)
+
                 row, col = self.metricToGrid(xi, yi)
 
                 # If the cell is free, there is a probability that the robot is located here
                 # used to be (row,col)
                 if not (self.isOccupied((row, col))):
-                    thetai = numpy.random.uniform(0, 2 * pi)
-                    particlei = Particle(xi, yi, thetai, self.init_weight)
+                    #thetai = numpy.random.uniform(0, 2 * pi)
+                    #particlei = Particle(xi, yi, thetai, self.init_weight)
+                    particlei = Particle(xi, yi, theta, self.init_weight)
                     self.particles.append(particlei)
                     free = False
         print('All particles initialized')
@@ -529,7 +537,7 @@ class MCL(object):
         rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
 
         rospy.sleep(1)
-        #self.publishPoseArray()
+        self.publishPoseArray()
 
 
 
@@ -558,7 +566,7 @@ class MCL(object):
         quaternion = tf.transformations.quaternion_from_euler(0, 0, theta)
         self.pos.pose.pose.orientation.z =quaternion[2]
         self.pos.pose.pose.orientation.w = quaternion[3]
-        #rospy.sleep(1)
+        rospy.sleep(0.1)
         self.particlesPublisher.publish(pa)
         self.posePublisher.publish(self.pos)
 
