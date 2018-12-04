@@ -41,7 +41,7 @@ class Map(object):
         self.xMin = 0
         self.xMax = self.width * self.resolution
         self.yMin = 0
-        self.yMax = self.height * self.resolution  
+        self.yMax = self.height * self.resolution
 
 
 class ParticleFilter(object):
@@ -88,7 +88,7 @@ class ParticleFilter(object):
         self.zRand = 0.30
         self.sigmaHit = 1
         # Only re-sample when neff drops below a given threshold (M/2)
-        self.n_tres = self.nParticles*0.8
+        self.n_tres = self.nParticles*0.9
 
         #Augmented MCL parameters
         self.w_slow=1
@@ -123,7 +123,7 @@ class ParticleFilter(object):
                     self.particles.append(particlei)
                     free = False
         print('All particles initialized')
-        self.publ=True
+
 
     def randomParticle(self):
         free = True
@@ -282,7 +282,7 @@ class ParticleFilter(object):
                 checked.append(grid)
 
     def prob(self,a,b):
-        return (1/sqrt(2*pi*b))*exp(-0.5*(a**2/b))
+        return (exp(-0.5*(a**2/b)/sqrt(2*pi*b)))
 
     def likelihood_field_range(self,particle,msg):
         q=1
@@ -298,11 +298,11 @@ class ParticleFilter(object):
                 if(ztk != numpy.inf):
                     if (ztk >= self.laser_min_range or ztk <= self.laser_max_range):
                         x= particle.x +x_sens*cos(particle.theta) - y_sens*sin(particle.theta) + ztk*cos(particle.theta + theta)
-                        y= particle.y + y_sens*sin(particle.theta)- x_sens*sin(particle.theta) + ztk*sin(particle.theta + theta)
+                        y= particle.y + y_sens*sin(particle.theta)+ x_sens*sin(particle.theta) + ztk*sin(particle.theta + theta)
 
                         dist = self.minDistance(x,y)
 
-                        q = q*(self.zHit*self.prob(dist,self.sigmaHit**2)+self.zRand/self.zMax)
+                        q = q*(self.zHit*self.prob(dist,self.sigmaHit**2)+(self.zRand/self.zMax))
             c+=1
         return q
 
@@ -310,7 +310,7 @@ class ParticleFilter(object):
         q=1
         c=0
         for i in range(0, len(msg.ranges)):
-            if (c%2==0):
+            if (c%10==0):
                 zt = msg.ranges[i]  # (Note: values < range_min or > range_max should be discarded)
                 angle = radians(i) - self.laser_min_angle
                 if (zt >= self.laser_min_range or zt <= self.laser_max_range):
@@ -335,8 +335,8 @@ class ParticleFilter(object):
         self.w_avg=0
         for particle in self.particles:
 
-            particle.weight = self.likelihood_field_range(particle,msg)
-            #particle.weight = self.beam_range_finder(particle,msg)
+            #particle.weight = self.likelihood_field_range(particle,msg)
+            particle.weight = self.beam_range_finder(particle,msg)
 
             self.w_avg = self.w_avg+((1.0/self.nParticles)*particle.weight)
 
@@ -516,6 +516,7 @@ class MCL(object):
         # Initialize particle set in particle filter
         self.particleFilter.initializeParticles()
 
+
         # Check if first publish
         self.it = 0
 
@@ -527,6 +528,9 @@ class MCL(object):
         rospy.Subscriber("/RosAria/pose", Odometry,
                          self.odomCallback)  # subscriber for odometry to be used for motionupdate
         rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
+        self.publishPoseArray()
+
+        self.pub=False
 
     # rospy.spin()
 
@@ -536,17 +540,18 @@ class MCL(object):
 
 
     def publishPoseArray(self):
-        bol = True
         pa = PoseArray()
         pa.header.frame_id = "map"
         pa.header.stamp = rospy.Time.now()
         for particle in self.particleFilter.particles:
             msg = self.particleFilter.createPose(particle)
             pa.poses.append(msg)
-            bol = False
-        while bol:
+        self.pub = False
+        print(pa)
+        while self.pub:
             pass
         self.particlesPublisher.publish(pa)
+        #self.pub=True
 
 
     def sensorCallback(self, msg):
