@@ -24,7 +24,6 @@ class Particle(object):
         self.theta = theta
         self.weight = weight
 
-
 class Map(object):
     def __init__(self, msg):
         self.data = msg.data
@@ -43,13 +42,12 @@ class Map(object):
         self.yMin = 0
         self.yMax = self.height * self.resolution
 
-
 class ParticleFilter(object):
     def __init__(self):
         self.particles = []
 
         # Set number of particles
-        self.nParticles = 200
+        self.nParticles = 5
 
         self.newParticles = []
         self.laser_min_angle = 0
@@ -111,8 +109,8 @@ class ParticleFilter(object):
             free = True
             while free:
                 #smaller initialize area, closer to robot
-                xi = numpy.random.uniform(self.map.xMax/6, self.map.xMax/1.5)
-                yi = numpy.random.uniform(self.map.yMax/6, self.map.yMax/1.5)
+                xi = numpy.random.uniform(self.map.xMax/2.8, self.map.xMax/1.7)
+                yi = numpy.random.uniform(self.map.yMax/2.7, self.map.yMax/1.7)
                 row, col = self.metricToGrid(xi, yi)
 
                 # If the cell is free, there is a probability that the robot is located here
@@ -225,8 +223,6 @@ class ParticleFilter(object):
         msg.orientation.w = quaternion[3]
         return msg
 
-
-
     def get_pMax(self, zt):
         if zt == self.laser_max_range:
             return 1
@@ -330,7 +326,6 @@ class ParticleFilter(object):
 
         for i, _ in enumerate(self.particles):
             self.predictParticlePose(self.particles[i])
-
         q = 1
         self.w_avg=0
         for particle in self.particles:
@@ -528,9 +523,10 @@ class MCL(object):
         rospy.Subscriber("/RosAria/pose", Odometry,
                          self.odomCallback)  # subscriber for odometry to be used for motionupdate
         rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
+
+        rospy.sleep(1)
         self.publishPoseArray()
 
-        self.pub=False
 
     # rospy.spin()
 
@@ -546,12 +542,10 @@ class MCL(object):
         for particle in self.particleFilter.particles:
             msg = self.particleFilter.createPose(particle)
             pa.poses.append(msg)
-        self.pub = False
-        print(pa)
-        while self.pub:
-            pass
+        #rospy.sleep(1)
+
         self.particlesPublisher.publish(pa)
-        #self.pub=True
+
 
 
     def sensorCallback(self, msg):
