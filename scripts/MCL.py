@@ -48,7 +48,7 @@ class ParticleFilter(object):
         self.particles = []
 
         # Set number of particles
-        self.nParticles = 5
+        self.nParticles = 50
 
         self.newParticles = []
         self.laser_min_angle = 0
@@ -68,7 +68,7 @@ class ParticleFilter(object):
         self.Odom = Odometry()
 
         # Initialize alpha
-        self.alfa = [0.2, 0.2, 0.2, 0.2]
+        self.alfa = [0.001, 0.1, 0.1, 0.001]
 
         # Relative change in x,y,theta over time dt since the last time particles were updated
         self.dx = 0
@@ -78,6 +78,9 @@ class ParticleFilter(object):
         self.publ = True
         # Initialize control signal u from odometry
         self.u = [0, 0, 0]
+
+        # Initialize LaserScan Message
+        self.scanMsg = LaserScan()
 
         # Measurement parameters
         self.lambdaShort = 0.1
@@ -98,6 +101,9 @@ class ParticleFilter(object):
 
         #Wait for map
         self.wait=False
+
+        # First odometry?
+        self.first = True
 
     def createMap(self, msg):
         self.map = Map(msg)
@@ -163,53 +169,54 @@ class ParticleFilter(object):
         return (b/6)*sum
 
     def getOdom(self, msg):
-        self.lastOdom = self.Odom
-        self.Odom = msg
-
-        oldx = self.lastOdom.pose.pose.position.x
-        oldy = self.lastOdom.pose.pose.position.y
-        oldz = self.lastOdom.pose.pose.orientation.z
-        oldw = self.lastOdom.pose.pose.orientation.w
-        (t0, t1, oldtheta) = tf.transformations.euler_from_quaternion((0, 0, oldz, oldw))
-        oldpose = list([oldx, oldy, oldtheta])
-
-        x = self.Odom.pose.pose.position.x
-        y = self.Odom.pose.pose.position.y
-        z = self.Odom.pose.pose.orientation.z
-        w = self.Odom.pose.pose.orientation.w
+        x = msg.pose.pose.position.x
+        y = msg.pose.pose.position.y
+        z = msg.pose.pose.orientation.z
+        w = msg.pose.pose.orientation.w
         (t0, t1, theta) = tf.transformations.euler_from_quaternion((0, 0, z, w))
-        newpose = list([x, y, theta])
+        self.Odom = list([x, y, theta])
+        return list([x, y, theta])
+
+
+    def getU(self):
+
+        if self.first:
+            msg = Odometry()
+            self.lastOdom = self.Odom
+            self.first = False
+            print("ikke")
 
         # these need to be initialized to zero right after calling predict pose
-        self.dx = newpose[0] - oldpose[0]
-        self.dy = newpose[1] - oldpose[1]
-        self.dtheta = newpose[2] - oldpose[2]
+        self.dx = self.Odom[0] - self.lastOdom[0]
+        self.dy = self.Odom[1] - self.lastOdom[1]
+        self.dtheta = self.Odom[2] - self.lastOdom[2]
 
         deltatrans = sqrt(self.dx ** 2 + self.dy ** 2)
-        deltarot1 = atan2(self.dy, self.dx) - oldpose[2]
-        deltarot2 = oldpose[2] - theta - deltarot1
+        deltarot1 = atan2(self.dy, self.dx) - self.lastOdom[2]
+        deltarot2 = self.dtheta - deltarot1
 
         self.u = [deltatrans, deltarot1, deltarot2]
 
     def predictParticlePose(self, particle):
         # Predict new pose for a particle after action u is performed over a timeinterval dt
-        dtbt = self.u[0] - self.sample2(self.alfa[2] * self.u[0] + self.alfa[3] * (self.u[1] * self.u[2]))
+        dtbt = self.u[0] - self.sample2(self.alfa[2] * self.u[0] + self.alfa[3] * (self.u[1] + self.u[2]))
         dtb1 = self.u[1] - self.sample2(self.alfa[0] * self.u[1] + self.alfa[1] * self.u[0])
         dtb2 = self.u[2] - self.sample2(self.alfa[0] * self.u[2] + self.alfa[1] * self.u[0])
         newx = particle.x + dtbt * cos(particle.theta + dtb1)
         newy = particle.y + dtbt * sin(particle.theta + dtb1)
 
+
         start = self.metricToGrid(particle.x, particle.y)
         end = self.metricToGrid(newx, newy)
 
-        cells = self.bresenhamLineAlg(start[0], start[1], end[0], end[1])
+        #cells = self.bresenhamLineAlg(start[0], start[1], end[0], end[1])
         count=0
         current = None
-        for p in cells:
-            if self.isOccupied(p):
-                current = cells[count-1]
-                break
-            count +=1
+        #for p in cells:
+        #    if self.isOccupied(p):
+        #        current = cells[count-1]
+        #        break
+        #    count +=1
 
         if (current is None):
             particle.x = newx
@@ -292,23 +299,25 @@ class ParticleFilter(object):
     def likelihood_field_range(self,particle,msg):
         q=1
         c=0
-        for i in range(0, len(msg.ranges)):
-            if(c%2==0):
-                ztk=msg.ranges[i]
-                angle = radians(i)
-                theta = particle.theta + angle - (pi / 2)
-                x_sens = particle.x + self.laser_max_range * cos(theta)
-                y_sens = particle.y + self.laser_max_range * sin(theta)
+        row, col = self.metricToGrid(particle.x, particle.y)
+        if (self.isOccupied((row, col))):
+            q=0
+        else:
+            for i in range(0, len(msg.ranges)):
+                if(c%2==0):
+                    ztk=msg.ranges[i]
+                    angle = radians(i)
+                    theta = particle.theta + angle - (pi / 2)
+                    x_sens = particle.x + self.laser_max_range * cos(theta)
+                    y_sens = particle.y + self.laser_max_range * sin(theta)
+                    if(ztk != numpy.inf):
+                        if (ztk >= self.laser_min_range or ztk <= self.laser_max_range):
+                            x= particle.x +x_sens*cos(particle.theta) - y_sens*sin(particle.theta) + ztk*cos(particle.theta + theta)
+                            y= particle.y + y_sens*sin(particle.theta)+ x_sens*sin(particle.theta) + ztk*sin(particle.theta + theta)
 
-                if(ztk != numpy.inf):
-                    if (ztk >= self.laser_min_range or ztk <= self.laser_max_range):
-                        x= particle.x +x_sens*cos(particle.theta) - y_sens*sin(particle.theta) + ztk*cos(particle.theta + theta)
-                        y= particle.y + y_sens*sin(particle.theta)+ x_sens*sin(particle.theta) + ztk*sin(particle.theta + theta)
-
-                        dist = self.minDistance(x,y)
-
-                        q = q*(self.zHit*self.prob(dist,self.sigmaHit**2)+(self.zRand/self.zMax))
-            c+=1
+                            dist = self.minDistance(x,y)
+                            q = q*(self.zHit*self.prob(dist,self.sigmaHit**2)+(self.zRand/self.zMax))
+                c+=1
         return q
 
     def beam_range_finder(self,particle,msg):
@@ -333,24 +342,25 @@ class ParticleFilter(object):
     # Measurement model
     def weightUpdate(self, msg):
 
-        for i, _ in enumerate(self.particles):
-            self.predictParticlePose(self.particles[i])
         q = 1
         self.w_avg=0
         for particle in self.particles:
 
-            #particle.weight = self.likelihood_field_range(particle,msg)
-            particle.weight = self.beam_range_finder(particle,msg)
+            particle.weight = self.likelihood_field_range(particle,msg)
+            #particle.weight = self.beam_range_finder(particle,msg)
 
             self.w_avg = self.w_avg+((1.0/self.nParticles)*particle.weight)
 
         a=time.time()
         # Normalize weights to find n_eff
         weights_temp = []
-        s= 0
+        s= 0.0
         for particle in self.particles:
+            print(particle.weight)
             s += particle.weight
             weights_temp.append(particle.weight)
+        if(s==0):
+            s=0.001
         weights_temp = [x / s for x in weights_temp]
 
         temp = 0
@@ -358,18 +368,22 @@ class ParticleFilter(object):
         for weight in weights_temp:
             temp = temp + weight**2
 
+        if (temp==0):
+            temp=0.001
 
-        n_eff = 1 / temp
+
+
+        n_eff = 1.0 / temp
 
         #Only re-sample when n_eff dnops below a given threshold n_tres
         if n_eff < self.n_tres:
-            self.resample()
+            hh = self.low_variance_sampler()
+            self.newParticles= hh
             print("I just resampled")
         if n_eff >= self.n_tres:
             self.newParticles = self.particles
             print("I did not resample")
         self.particles = self.newParticles
-        self.newParticles = []
 
     def raycasting(self, particle, angle):
         theta = particle.theta + angle - (pi / 2)
@@ -455,6 +469,26 @@ class ParticleFilter(object):
     def findMapIndex(self, grid):
         return int(((grid[1] - 1) * self.map.width) + grid[0])
 
+    def low_variance_sampler(self):
+        weights=[]
+        for particle in self.particles:
+            weights.append(particle.weight)
+
+        new_particle_list = []
+        c = weights[0]
+        i = 0
+
+        for m in range(1, len(self.particles) + 1):
+            r = random.random() * (1. / (len(self.particles)))
+            u = r + (m - 1) * (1. / (len(self.particles)))
+            while u > c:
+                i += 1
+                c += weights[i]
+            rp = self.particles[i]  # resample_particle
+            resp = Particle(rp.x, rp.y, rp.theta, self.init_weight)
+            new_particle_list.append(resp)
+        return new_particle_list
+
     # Resampling the particles to get a new probability distribution Xt. The particles with
     # high weight have a higher probability of being resampled, than the ones with lower.
     def resample(self):
@@ -463,8 +497,6 @@ class ParticleFilter(object):
         self.w_fast = self.w_fast + self.alpha_fast*(self.w_avg-self.w_fast)
         w = max(0,1-(self.w_fast/self.w_slow))
         w=0
-        print('w:',w)
-
         weights_temp = []
         s = 0
         for particle in self.particles:
@@ -472,7 +504,7 @@ class ParticleFilter(object):
         weights_temp = numpy.array(weights_temp)
 
         weights_temp=weights_temp/weights_temp.sum()
-
+        print(weights_temp)
         bol=False
         if (w != 0):
             x = numpy.insert(weights_temp,len(weights_temp),w)
@@ -514,15 +546,17 @@ class MCL(object):
             if (self.particleFilter.wait):
                 break
 
-        # set number of particles, standard or set
-        # shall we have no parameters in?
+        # Check if we have new messages
+        self.newodom = False
+        self.newscan = False
+        self.odomstamp = time.time()
 
         # Initialize particle set in particle filter
         self.particleFilter.initializeParticles()
 
+        # Initialize pos message
         self.pos = PoseWithCovarianceStamped()
         self.pos.header.frame_id = "map"
-
 
         # Check if first publish
         self.it = 0
@@ -532,20 +566,14 @@ class MCL(object):
                                              queue_size=10)  # pulish of position+orioentation to topic poses, type Poses
         self.particlesPublisher = rospy.Publisher("PoseArrays", PoseArray,
                                                   queue_size=10)  # publisher of particles in poseArray
-        rospy.Subscriber("/RosAria/pose", Odometry,
-                         self.odomCallback)  # subscriber for odometry to be used for motionupdate
-        rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
-
-        rospy.sleep(1)
-        self.publishPoseArray()
-
-
-
-    # rospy.spin()
-
+        rospy.Subscriber("/RosAria/pose",Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
+        rospy.Subscriber("/scan",LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
+        #rospy.spin()
 
     def odomCallback(self, msg):
         self.particleFilter.getOdom(msg)
+        self.odomstamp = msg.header.stamp
+        self.newodom = True
 
 
     def publishPoseArray(self):
@@ -566,35 +594,45 @@ class MCL(object):
         quaternion = tf.transformations.quaternion_from_euler(0, 0, theta)
         self.pos.pose.pose.orientation.z =quaternion[2]
         self.pos.pose.pose.orientation.w = quaternion[3]
-        rospy.sleep(0.1)
-        self.particlesPublisher.publish(pa)
-        self.posePublisher.publish(self.pos)
+        if self.it ==0:
+            self.particlesPublisher.publish(pa)
+            self.posePublisher.publish(self.pos)
+        else:
+            self.particlesPublisher.publish(pa)
+            self.posePublisher.publish(self.pos)
 
 
 
 
     def sensorCallback(self, msg):
-        s=time.time()
         # Laser min/max angle and range are constant and will only be set the first time
         if (self.particleFilter.laser_max_range == 0):
             self.particleFilter.laser_min_angle = msg.angle_min
             self.particleFilter.laser_max_angle = msg.angle_max
             self.particleFilter.laser_min_range = msg.range_min
             self.particleFilter.laser_max_range = msg.range_max
-        self.particleFilter.weightUpdate(msg)
-        self.particleFilter.publ = True
-        e=time.time()
-        print("SENSOR CALLBACK: ", e-s)
-
+        self.particleFilter.scanMsg = msg
+        self.newscan = True
 
     def mapCallback(self, msg):
         self.particleFilter.createMap(msg)
 
     def runmcl(self):
         while not rospy.is_shutdown():
-            if self.particleFilter.publ:
+            if self.it ==0:
                 self.publishPoseArray()
-                self.particleFilter.publ = False
+            if self.newodom and self.newscan:
+                self.newodom = False
+                self.newscan = False
+                self.particleFilter.getU()
+                for particle in self.particleFilter.particles:
+                    self.particleFilter.predictParticlePose(particle)
+                self.particleFilter.lastOdom = self.particleFilter.Odom
+
+                self.particleFilter.weightUpdate(self.particleFilter.scanMsg)
+
+                self.publishPoseArray()
+
 
 if __name__ == "__main__":
     monteCarlo = MCL()
