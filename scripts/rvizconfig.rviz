@@ -11,6 +11,7 @@ Panels:
         - /Map1
         - /TF1
         - /TF1/Frames1
+        - /PoseWithCovariance1
       Splitter Ratio: 0.5
     Tree Height: 515
   - Class: rviz/Selection
@@ -107,6 +108,36 @@ Visualization Manager:
         {}
       Update Interval: 0
       Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.100000001
+      Class: rviz/PoseWithCovariance
+      Color: 0; 255; 127
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.300000012
+          Color: 204; 51; 204
+          Scale: 1
+          Value: true
+        Value: false
+      Enabled: true
+      Head Length: 0.300000012
+      Head Radius: 0.100000001
+      Name: PoseWithCovariance
+      Shaft Length: 1
+      Shaft Radius: 0.0500000007
+      Shape: Arrow
+      Topic: /Pose
+      Unreliable: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -141,7 +172,7 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.00999999978
-      Scale: 43.6036453
+      Scale: 49.9231796
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
       X: 9.93220139

@@ -8,6 +8,7 @@ import rospy
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Pose
 from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
 import tf  # A little unsure about this one
@@ -511,12 +512,15 @@ class MCL(object):
         # Initialize particle set in particle filter
         self.particleFilter.initializeParticles()
 
+        self.pos = PoseWithCovarianceStamped()
+        self.pos.header.frame_id = "map"
+
 
         # Check if first publish
         self.it = 0
 
         # Do something about the time
-        self.posePublisher = rospy.Publisher("Poses", Pose,
+        self.posePublisher = rospy.Publisher("Pose", PoseWithCovarianceStamped,
                                              queue_size=10)  # pulish of position+orioentation to topic poses, type Poses
         self.particlesPublisher = rospy.Publisher("PoseArrays", PoseArray,
                                                   queue_size=10)  # publisher of particles in poseArray
@@ -525,7 +529,8 @@ class MCL(object):
         rospy.Subscriber("/scan", LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
 
         rospy.sleep(1)
-        self.publishPoseArray()
+        #self.publishPoseArray()
+
 
 
     # rospy.spin()
@@ -539,12 +544,24 @@ class MCL(object):
         pa = PoseArray()
         pa.header.frame_id = "map"
         pa.header.stamp = rospy.Time.now()
+        x=0
+        y=0
+        theta=0
         for particle in self.particleFilter.particles:
             msg = self.particleFilter.createPose(particle)
             pa.poses.append(msg)
+            x = x+ particle.x/self.particleFilter.nParticles
+            y = y+particle.y/self.particleFilter.nParticles
+            theta = theta + particle.theta/self.particleFilter.nParticles
+        self.pos.pose.pose.position.x=x
+        self.pos.pose.pose.position.y=y
+        quaternion = tf.transformations.quaternion_from_euler(0, 0, theta)
+        self.pos.pose.pose.orientation.z =quaternion[2]
+        self.pos.pose.pose.orientation.w = quaternion[3]
         #rospy.sleep(1)
-
         self.particlesPublisher.publish(pa)
+        self.posePublisher.publish(self.pos)
+
 
 
 
