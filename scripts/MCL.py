@@ -48,7 +48,7 @@ class ParticleFilter(object):
         self.particles = []
 
         # Set number of particles
-        self.nParticles = 50
+        self.nParticles = 500
 
         self.newParticles = []
         self.laser_min_angle = 0
@@ -68,7 +68,7 @@ class ParticleFilter(object):
         self.Odom = Odometry()
 
         # Initialize alpha
-        self.alfa = [0.001, 0.1, 0.1, 0.001]
+        self.alfa = [0.01, 0.01, 0.01, 0.01]
 
         # Relative change in x,y,theta over time dt since the last time particles were updated
         self.dx = 0
@@ -122,17 +122,23 @@ class ParticleFilter(object):
                 theta = 0
                 #xi = numpy.random.uniform(self.map.xMax/2.8, self.map.xMax/1.7)
                 #yi = numpy.random.uniform(self.map.yMax/2.7, self.map.yMax/1.7)
-                xi = numpy.random.uniform(x-2, x+2)
-                yi = numpy.random.uniform(y-1.8, y+0.2)
+                #xi = numpy.random.uniform(self.map.xMax/4, self.map.xMax/2)
+                #yi = numpy.random.uniform(self.map.yMax/4, self.map.yMax/2)
+                #xi = numpy.random.uniform(x-1.5, x+1.5)
+                #yi = numpy.random.uniform(y-1, y+0.2)
+
+                xi = numpy.random.uniform(self.map.xMin, self.map.xMax)
+                yi = numpy.random.uniform(self.map.yMin, self.map.yMax)
+
 
                 row, col = self.metricToGrid(xi, yi)
 
                 # If the cell is free, there is a probability that the robot is located here
                 # used to be (row,col)
                 if not (self.isOccupied((row, col))):
-                    #thetai = numpy.random.uniform(0, 2 * pi)
-                    #particlei = Particle(xi, yi, thetai, self.init_weight)
-                    particlei = Particle(xi, yi, theta, self.init_weight)
+                    thetai = numpy.random.uniform(-pi/6, pi/6)
+                    particlei = Particle(xi, yi, thetai, self.init_weight)
+                    #particlei = Particle(xi, yi, theta, self.init_weight)
                     self.particles.append(particlei)
                     free = False
         print('All particles initialized')
@@ -276,20 +282,22 @@ class ParticleFilter(object):
         queue = [(row1,col1)]
         checked=[]
         while bol:
-            for grid in queue:
-                if grid not in checked:
-                    if (grid[0] > 0):
-                        queue.append((grid[0] - 1, grid[1]))
-                    if (grid[0]< self.map.xMax):
-                        queue.append((grid[0] + 1, grid[1]))
-                    if(grid[1]<self.map.yMax):
-                        queue.append((grid[0], grid[1] + 1))
-                    if (grid[1]>0):
-                        queue.append((grid[0], grid[1] - 1))
-                    if self.isOccupied(grid):
-                        bol=False
-                        dist = sqrt((grid[0] - row1) ** 2 + (grid[1] - col1) ** 2) * self.map.resolution
-                        return dist**2
+            grid=queue[0]
+            if grid in checked:
+                queue.remove(grid)
+            else:
+                if (grid[0] > 0):
+                    queue.append((grid[0] - 1, grid[1]))
+                if (grid[0]< self.map.xMax):
+                    queue.append((grid[0] + 1, grid[1]))
+                if(grid[1]<self.map.yMax):
+                    queue.append((grid[0], grid[1] + 1))
+                if (grid[1]>0):
+                    queue.append((grid[0], grid[1] - 1))
+                if self.isOccupied(grid):
+                    bol=False
+                    dist = sqrt((grid[0] - row1) ** 2 + (grid[1] - col1) ** 2) * self.map.resolution
+                    return dist**2
                 queue.remove(grid)
                 checked.append(grid)
 
@@ -302,9 +310,10 @@ class ParticleFilter(object):
         row, col = self.metricToGrid(particle.x, particle.y)
         if (self.isOccupied((row, col))):
             q=0
+
         else:
             for i in range(0, len(msg.ranges)):
-                if(c%2==0):
+                if(c%15==0):
                     ztk=msg.ranges[i]
                     angle = radians(i)
                     theta = particle.theta + angle - (pi / 2)
@@ -324,7 +333,7 @@ class ParticleFilter(object):
         q=1
         c=0
         for i in range(0, len(msg.ranges)):
-            if (c%10==0):
+            if (c%20==0):
                 zt = msg.ranges[i]  # (Note: values < range_min or > range_max should be discarded)
                 angle = radians(i) - self.laser_min_angle
                 if (zt >= self.laser_min_range or zt <= self.laser_max_range):
@@ -344,19 +353,19 @@ class ParticleFilter(object):
 
         q = 1
         self.w_avg=0
+        s=time.time()
         for particle in self.particles:
-
             particle.weight = self.likelihood_field_range(particle,msg)
             #particle.weight = self.beam_range_finder(particle,msg)
+        e=time.time()
+        print("time:", e-s)
 
-            self.w_avg = self.w_avg+((1.0/self.nParticles)*particle.weight)
+        self.w_avg = self.w_avg+((1.0/self.nParticles)*particle.weight)
 
-        a=time.time()
         # Normalize weights to find n_eff
         weights_temp = []
         s= 0.0
         for particle in self.particles:
-            print(particle.weight)
             s += particle.weight
             weights_temp.append(particle.weight)
         if(s==0):
@@ -371,14 +380,12 @@ class ParticleFilter(object):
         if (temp==0):
             temp=0.001
 
-
-
         n_eff = 1.0 / temp
 
         #Only re-sample when n_eff dnops below a given threshold n_tres
         if n_eff < self.n_tres:
-            hh = self.low_variance_sampler()
-            self.newParticles= hh
+            #hh = self.low_variance_sampler()
+            self.resample()
             print("I just resampled")
         if n_eff >= self.n_tres:
             self.newParticles = self.particles
@@ -469,25 +476,6 @@ class ParticleFilter(object):
     def findMapIndex(self, grid):
         return int(((grid[1] - 1) * self.map.width) + grid[0])
 
-    def low_variance_sampler(self):
-        weights=[]
-        for particle in self.particles:
-            weights.append(particle.weight)
-
-        new_particle_list = []
-        c = weights[0]
-        i = 0
-
-        for m in range(1, len(self.particles) + 1):
-            r = random.random() * (1. / (len(self.particles)))
-            u = r + (m - 1) * (1. / (len(self.particles)))
-            while u > c:
-                i += 1
-                c += weights[i]
-            rp = self.particles[i]  # resample_particle
-            resp = Particle(rp.x, rp.y, rp.theta, self.init_weight)
-            new_particle_list.append(resp)
-        return new_particle_list
 
     # Resampling the particles to get a new probability distribution Xt. The particles with
     # high weight have a higher probability of being resampled, than the ones with lower.
@@ -496,7 +484,7 @@ class ParticleFilter(object):
         self.w_slow = self.w_slow + self.alpha_slow*(self.w_avg-self.w_slow)
         self.w_fast = self.w_fast + self.alpha_fast*(self.w_avg-self.w_fast)
         w = max(0,1-(self.w_fast/self.w_slow))
-        w=0
+        #w=0
         weights_temp = []
         s = 0
         for particle in self.particles:
@@ -518,7 +506,7 @@ class ParticleFilter(object):
         for weight in weights_temp:
             sum += weight
             cumsum.append(sum)
-
+        self.newParticles = []
         while (len(self.newParticles) != self.nParticles):
             rand = numpy.random.uniform(0, 1) * max(cumsum)
             k = 0
@@ -594,6 +582,7 @@ class MCL(object):
         quaternion = tf.transformations.quaternion_from_euler(0, 0, theta)
         self.pos.pose.pose.orientation.z =quaternion[2]
         self.pos.pose.pose.orientation.w = quaternion[3]
+        self.pos.pose.covariance = 
         if self.it ==0:
             self.particlesPublisher.publish(pa)
             self.posePublisher.publish(self.pos)
@@ -625,12 +614,12 @@ class MCL(object):
                 self.newodom = False
                 self.newscan = False
                 self.particleFilter.getU()
+
                 for particle in self.particleFilter.particles:
                     self.particleFilter.predictParticlePose(particle)
+
                 self.particleFilter.lastOdom = self.particleFilter.Odom
-
                 self.particleFilter.weightUpdate(self.particleFilter.scanMsg)
-
                 self.publishPoseArray()
 
 
