@@ -11,8 +11,13 @@ from geometry_msgs.msg import PoseArray
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import Path
+from geometry_msgs.msg import PoseStamped
+
 import tf  # A little unsure about this one
 import numpy
+from numpy import median
+import matplotlib.pyplot as plt
 import time
 import random
 
@@ -48,7 +53,7 @@ class ParticleFilter(object):
         self.particles = []
 
         # Set number of particles
-        self.nParticles = 500
+        self.nParticles = 200
 
         self.newParticles = []
         self.laser_min_angle = 0
@@ -127,8 +132,8 @@ class ParticleFilter(object):
                 #xi = numpy.random.uniform(x-1.5, x+1.5)
                 #yi = numpy.random.uniform(y-1, y+0.2)
 
-                xi = numpy.random.uniform(self.map.xMin, self.map.xMax)
-                yi = numpy.random.uniform(self.map.yMin, self.map.yMax)
+                xi = numpy.random.uniform(x-2,x+2)#self.map.xMin, self.map.xMax)
+                yi = numpy.random.uniform(y-2,y)#self.map.yMin, self.map.yMax)
 
 
                 row, col = self.metricToGrid(xi, yi)
@@ -190,7 +195,6 @@ class ParticleFilter(object):
             msg = Odometry()
             self.lastOdom = self.Odom
             self.first = False
-            print("ikke")
 
         # these need to be initialized to zero right after calling predict pose
         self.dx = self.Odom[0] - self.lastOdom[0]
@@ -350,15 +354,12 @@ class ParticleFilter(object):
 
     # Measurement model
     def weightUpdate(self, msg):
-
         q = 1
         self.w_avg=0
-        s=time.time()
         for particle in self.particles:
+
             particle.weight = self.likelihood_field_range(particle,msg)
             #particle.weight = self.beam_range_finder(particle,msg)
-        e=time.time()
-        print("time:", e-s)
 
         self.w_avg = self.w_avg+((1.0/self.nParticles)*particle.weight)
 
@@ -381,6 +382,8 @@ class ParticleFilter(object):
             temp=0.001
 
         n_eff = 1.0 / temp
+
+
 
         #Only re-sample when n_eff dnops below a given threshold n_tres
         if n_eff < self.n_tres:
@@ -492,7 +495,6 @@ class ParticleFilter(object):
         weights_temp = numpy.array(weights_temp)
 
         weights_temp=weights_temp/weights_temp.sum()
-        print(weights_temp)
         bol=False
         if (w != 0):
             x = numpy.insert(weights_temp,len(weights_temp),w)
@@ -538,10 +540,15 @@ class MCL(object):
         self.newodom = False
         self.newscan = False
         self.odomstamp = time.time()
+        self.endx=0
+        self.endy=0
 
         # Initialize particle set in particle filter
         self.particleFilter.initializeParticles()
 
+        # Error path vs marker
+        self.timelist = []
+        self.errorlist = []
         # Initialize pos message
         self.pos = PoseWithCovarianceStamped()
         self.pos.header.frame_id = "map"
@@ -557,32 +564,75 @@ class MCL(object):
         rospy.Subscriber("/RosAria/pose",Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
         rospy.Subscriber("/scan",LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
         #rospy.spin()
+        self.pathpublisher = rospy.Publisher("Path", Path, queue_size=10)
+        self.pathmsg = Path()
+        self.pathmsg.header.frame_id = "map"
 
     def odomCallback(self, msg):
-        self.particleFilter.getOdom(msg)
-        self.odomstamp = msg.header.stamp
+        l = self.particleFilter.getOdom(msg)
+        self.publishpath(msg)
         self.newodom = True
+
+    def publishpath(self,msg):
+        pos = PoseStamped()
+        pos.header.frame_id = "map"
+        pos.header.stamp = rospy.Time.now()
+
+        theta=(-130*pi/180)
+        x=+msg.pose.pose.position.x
+        y=+msg.pose.pose.position.y
+        x1= cos(theta)*x + -sin(theta)*y
+        y1=sin(theta)*x + cos(theta)*y
+        z=msg.pose.pose.orientation.z
+        w=msg.pose.pose.orientation.w
+
+        self.pathxpoint = x1 + 5
+        self.pathypoint = y1 + 8.65
+
+        pos.pose.position.x = x1 + 5
+        pos.pose.position.y = y1 + 8.65
+
+        pos.pose.orientation.z = z
+        pos.pose.orientation.w = w
+
+        self.pathmsg.poses.append(pos)
+        self.pathpublisher.publish(self.pathmsg)
 
 
     def publishPoseArray(self):
         pa = PoseArray()
         pa.header.frame_id = "map"
         pa.header.stamp = rospy.Time.now()
-        x=0
-        y=0
-        theta=0
+        x = []
+        y=[]
+        theta=[]
+        #x=0
+        #y=0
+        #theta=0
         for particle in self.particleFilter.particles:
             msg = self.particleFilter.createPose(particle)
             pa.poses.append(msg)
-            x = x+ particle.x/self.particleFilter.nParticles
-            y = y+particle.y/self.particleFilter.nParticles
-            theta = theta + particle.theta/self.particleFilter.nParticles
-        self.pos.pose.pose.position.x=x
-        self.pos.pose.pose.position.y=y
-        quaternion = tf.transformations.quaternion_from_euler(0, 0, theta)
+            x.append(particle.x)
+            y.append(particle.y)
+            theta.append(particle.theta)
+
+            #FOR CALCULATING THE MEAN FOR ESTIMATING POSE
+            #x = x+ particle.x/self.particleFilter.nParticles
+            #y = y+particle.y/self.particleFilter.nParticles
+            #theta = theta + particle.theta/self.particleFilter.nParticles
+
+        self.pos.pose.pose.position.x=median(x)
+        self.pos.pose.pose.position.y=median(y)
+        thetav = median(theta)
+        self.endx = median(x)
+        self.endy = median(y)
+        #self.pos.pose.pose.position.x=x
+        #self.pos.pose.pose.position.y=y
+        #self.endx = x
+        #self.endy = y
+        quaternion = tf.transformations.quaternion_from_euler(0, 0, thetav)
         self.pos.pose.pose.orientation.z =quaternion[2]
         self.pos.pose.pose.orientation.w = quaternion[3]
-        self.pos.pose.covariance = 
         if self.it ==0:
             self.particlesPublisher.publish(pa)
             self.posePublisher.publish(self.pos)
@@ -614,15 +664,32 @@ class MCL(object):
                 self.newodom = False
                 self.newscan = False
                 self.particleFilter.getU()
-
                 for particle in self.particleFilter.particles:
                     self.particleFilter.predictParticlePose(particle)
-
                 self.particleFilter.lastOdom = self.particleFilter.Odom
+
                 self.particleFilter.weightUpdate(self.particleFilter.scanMsg)
+
                 self.publishPoseArray()
+
+                errorpath = sqrt( (self.pathxpoint-self.pos.pose.pose.position.x)**2 +(self.pos.pose.pose.position.y- self.pathypoint)**2)
+                self.errorlist.append(errorpath)
+                self.timelist.append(time.time())
+
+                error = sqrt((self.endx-11.9)**2 + (self.endy-15.45)**2)
+                print("error")
+                print(error)
+        #print(self.errorlist)
+        #print(self.timelist)
+        plt.plot(self.timelist,self.errorlist)
+        plt.show()
+
+#x=11.9
+#y=15.45
 
 
 if __name__ == "__main__":
     monteCarlo = MCL()
     monteCarlo.runmcl()
+    print("avsluttende koordinater og avstand2")
+    print(monteCarlo.endx, monteCarlo.endy)
