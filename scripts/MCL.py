@@ -53,7 +53,7 @@ class ParticleFilter(object):
         self.particles = []
 
         # Set number of particles
-        self.nParticles = 200
+        self.nParticles = 20
 
         self.newParticles = []
         self.laser_min_angle = 0
@@ -546,15 +546,23 @@ class MCL(object):
         # Initialize particle set in particle filter
         self.particleFilter.initializeParticles()
 
-        # Error path vs marker
+        # Error amcl vs marker
         self.timelist = []
         self.errorlist = []
+
         # Initialize pos message
         self.pos = PoseWithCovarianceStamped()
         self.pos.header.frame_id = "map"
 
         # Check if first publish
         self.it = 0
+
+        # Get Amcl pose
+        self.amclpose = [0,0,0]
+
+        # Marker pose
+        self.markerpose =[0,0,0]
+
 
         # Do something about the time
         self.posePublisher = rospy.Publisher("Pose", PoseWithCovarianceStamped,
@@ -563,41 +571,19 @@ class MCL(object):
                                                   queue_size=10)  # publisher of particles in poseArray
         rospy.Subscriber("/RosAria/pose",Odometry, self.odomCallback)  # subscriber for odometry to be used for motionupdate
         rospy.Subscriber("/scan",LaserScan, self.sensorCallback)  # subscribe to kinect scan for the sensorupdate
+        rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped, self.amclCallback)
         #rospy.spin()
-        self.pathpublisher = rospy.Publisher("Path", Path, queue_size=10)
-        self.pathmsg = Path()
-        self.pathmsg.header.frame_id = "map"
+
 
     def odomCallback(self, msg):
         l = self.particleFilter.getOdom(msg)
-        self.publishpath(msg)
         self.newodom = True
 
-    def publishpath(self,msg):
-        pos = PoseStamped()
-        pos.header.frame_id = "map"
-        pos.header.stamp = rospy.Time.now()
-
-        theta=(-130*pi/180)
-        x=+msg.pose.pose.position.x
-        y=+msg.pose.pose.position.y
-        x1= cos(theta)*x + -sin(theta)*y
-        y1=sin(theta)*x + cos(theta)*y
-        z=msg.pose.pose.orientation.z
-        w=msg.pose.pose.orientation.w
-
-        self.pathxpoint = x1 + 5
-        self.pathypoint = y1 + 8.65
-
-        pos.pose.position.x = x1 + 5
-        pos.pose.position.y = y1 + 8.65
-
-        pos.pose.orientation.z = z
-        pos.pose.orientation.w = w
-
-        self.pathmsg.poses.append(pos)
-        self.pathpublisher.publish(self.pathmsg)
-
+    def amclCallback(self,msg):
+        self.amclpose[0] = msg.pose.pose.position.x
+        self.amclpose[1] = msg.pose.pose.position.y
+        (t0, t1, theta) = tf.transformations.euler_from_quaternion((0, 0, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w))
+        self.amclpose[2] = theta
 
     def publishPoseArray(self):
         pa = PoseArray()
@@ -621,15 +607,13 @@ class MCL(object):
             #y = y+particle.y/self.particleFilter.nParticles
             #theta = theta + particle.theta/self.particleFilter.nParticles
 
-        self.pos.pose.pose.position.x=median(x)
-        self.pos.pose.pose.position.y=median(y)
+        self.markerpose[0]=median(x)
+        self.markerpose[1]=median(y)
+        self.pos.pose.pose.position.x =self.markerpose[0]
+        self.pos.pose.pose.position.y = self.markerpose[1]
         thetav = median(theta)
-        self.endx = median(x)
-        self.endy = median(y)
-        #self.pos.pose.pose.position.x=x
-        #self.pos.pose.pose.position.y=y
-        #self.endx = x
-        #self.endy = y
+        self.markerpose[2]=thetav
+
         quaternion = tf.transformations.quaternion_from_euler(0, 0, thetav)
         self.pos.pose.pose.orientation.z =quaternion[2]
         self.pos.pose.pose.orientation.w = quaternion[3]
@@ -672,17 +656,22 @@ class MCL(object):
 
                 self.publishPoseArray()
 
-                errorpath = sqrt( (self.pathxpoint-self.pos.pose.pose.position.x)**2 +(self.pos.pose.pose.position.y- self.pathypoint)**2)
-                self.errorlist.append(errorpath)
+                erroramcl= sqrt((self.amclpose[0]-self.markerpose[0])**2 +(self.markerpose[1]- self.amclpose[1])**2)
+                self.errorlist.append(erroramcl)
                 self.timelist.append(time.time())
 
-                error = sqrt((self.endx-11.9)**2 + (self.endy-15.45)**2)
-                print("error")
-                print(error)
+                #error = sqrt((self.endx-11.9)**2 + (self.endy-15.45)**2)
+                #print("error")
+                #print(error)
         #print(self.errorlist)
         #print(self.timelist)
         plt.plot(self.timelist,self.errorlist)
+        plt.ylabel("Error [m]")
+        plt.xlabel("Time [s]")
+        plt.title("MCL vs AMCL")
+        plt.grid(True)
         plt.show()
+
 
 #x=11.9
 #y=15.45

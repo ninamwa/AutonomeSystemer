@@ -1,4 +1,11 @@
+
 <launch>
-	<node pkg="tf" type="static_transform_publisher" name="cam_to_map"
-    args="0 0  0  0 0 0  /camera_depth_frame /map 100" />
+<node pkg="amcl" type="amcl" name="amcl">
+  <!-- Publish scans from best pose at a max of 10 Hz -->
+  <param name="initial_pose_x" value="10.47"/>
+  <param name="initial_pose_y" value="9.53"/>
+  <param name="initial_pose_a" value="0" />
+  <param name="global_frame_id" value="/map"/>
+  <param name="base_frame_id" value="base_link"/> 
+</node>
 </launch>
